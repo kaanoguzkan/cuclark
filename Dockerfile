@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         coreutils \
         ca-certificates \
         libgomp1 \
+        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/exe/cuCLARK        /usr/local/bin/cuCLARK
