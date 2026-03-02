@@ -12,6 +12,9 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
     set(CMAKE_CUDA_ARCHITECTURES "70;75;80;86;89;90")
 endif()
 
+# CUDA toolkit (needed to expose cuda_runtime.h to C++ host files)
+find_package(CUDAToolkit REQUIRED)
+
 # OpenMP is optional: detected at configure time
 find_package(OpenMP)
 
@@ -28,6 +31,7 @@ set(CUCLARK_SOURCES
 # cuCLARK — full variant (large hash table, 3 DB parts per device)
 # ------------------------------------------------------------------
 add_executable(cuCLARK ${CUCLARK_SOURCES})
+target_include_directories(cuCLARK PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
 target_compile_options(cuCLARK PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-O3>
     $<$<COMPILE_LANGUAGE:CUDA>:-O3>
@@ -44,6 +48,7 @@ endif()
 # ------------------------------------------------------------------
 add_executable(cuCLARK-l ${CUCLARK_SOURCES})
 target_compile_definitions(cuCLARK-l PRIVATE CUCLARK_LIGHT)
+target_include_directories(cuCLARK-l PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
 target_compile_options(cuCLARK-l PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-O3>
     $<$<COMPILE_LANGUAGE:CUDA>:-O3>
