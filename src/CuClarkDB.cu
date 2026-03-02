@@ -1183,9 +1183,9 @@ __global__ void queryKernel (uint8_t k,
 		if(wlane==0) printf("numTargetsPerWarp: %d\n",numTargetsPerWarp);
 #endif
 		//~ for (int i=tid; i<numTargets; i += warpSize)
-		for (int i=wlane+numTargetsPerWarp*wid; (i<numTargetsPerWarp*(wid+1)) && (i <numTargets) ; i += warpSize)
+		for (int i=wlane+numTargetsPerWarp*wid; i<(int)(numTargetsPerWarp*(wid+1)) ; i += warpSize)
 		{
-			pred = targetHits16[i] > 0 ? 1 : 0;
+			pred = (i < (int)numTargets && targetHits16[i] > 0) ? 1 : 0;
 			t_m = INT_MAX >> warpSize-wlane-1;	// set bits < tid
 			b = __ballot_sync(0xffffffff, pred) & t_m;	// get pred bits < tid
 			t_u = __popc(b);					// get sum of bits = # pred < tid
@@ -1207,7 +1207,7 @@ __global__ void queryKernel (uint8_t k,
 				}
 			}
 			total += t_u+pred;
-			if (i == numTargetsPerWarp*(wid+1)-1 || i == numTargets-1)
+			if (i == (int)(numTargetsPerWarp*(wid+1))-1)
 			{
 #ifdef DEBUG_KERNEL
 				printf("Block: %i, Total: %i\n",bid,total);
