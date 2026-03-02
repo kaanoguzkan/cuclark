@@ -30,11 +30,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /usr/local/bin/cuCLARK        /usr/local/bin/cuCLARK
-COPY --from=builder /usr/local/bin/cuCLARK-l      /usr/local/bin/cuCLARK-l
-COPY --from=builder /usr/local/bin/getTargetsDef  /usr/local/bin/getTargetsDef
-COPY --from=builder /usr/local/bin/getAccssnTaxID /usr/local/bin/getAccssnTaxID
-COPY --from=builder /usr/local/bin/getfilesToTaxNodes /usr/local/bin/getfilesToTaxNodes
+COPY --from=builder /usr/local/exe/cuCLARK        /usr/local/bin/cuCLARK
+COPY --from=builder /usr/local/exe/cuCLARK-l      /usr/local/bin/cuCLARK-l
+COPY --from=builder /usr/local/exe/getTargetsDef  /usr/local/bin/getTargetsDef
+COPY --from=builder /usr/local/exe/getAccssnTaxID /usr/local/bin/getAccssnTaxID
+COPY --from=builder /usr/local/exe/getfilesToTaxNodes /usr/local/bin/getfilesToTaxNodes
 
 COPY *.sh /opt/cuclark/scripts/
 RUN chmod +x /opt/cuclark/scripts/*.sh
