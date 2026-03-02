@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gawk \
         coreutils \
         ca-certificates \
+        libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/exe/cuCLARK        /usr/local/bin/cuCLARK
