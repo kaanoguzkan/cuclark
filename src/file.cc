@@ -29,10 +29,9 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
-#include <string.h>
+#include <cstring>
 #include <fstream>
 
-using namespace std;
 
 #include "./file.hh"
 
@@ -46,7 +45,7 @@ void getElementsFromLine(char*& line, const size_t& len, const int _maxElement, 
 		while ( t < len  && (line[t] == ' ' || line[t] == '\t' || line[t] == '\n' || line[t] == '\r'))
 		{       t++;
 		}
-		string v = "";
+		std::string v = "";
 		while ( t < len && line[t] != ' '  && line[t] != '\t' && line[t] != '\n' && line[t] != '\r')
 		{
 			v.push_back(line[t]);
@@ -71,7 +70,7 @@ void getElementsFromLine(const std::string& line, const size_t& _maxElement, std
 		while (t <  len && (line[t] == ' ' || line[t] == ',' || line[t] == '\n' || line[t] == '\t' || line[t] == '\r'))
 		{       t++;
 		}
-		string v = "";
+		std::string v = "";
 		while (t <  len && line[t] != ' '  && line[t] != ',' && line[t] != '\n' && line[t] != '\t' && line[t] != '\r')
 		{
 			v.push_back(line[t]);
@@ -86,7 +85,7 @@ void getElementsFromLine(const std::string& line, const size_t& _maxElement, std
 	return;
 }
 
-void getElementsFromLine(const std::string& line, const vector<char>& _seps, std::vector< std::string >& _elements)
+void getElementsFromLine(const std::string& line, const std::vector<char>& _seps, std::vector< std::string >& _elements)
 {
 	size_t t = 0, len = line.size();
 	size_t cpt = 0;
@@ -101,7 +100,7 @@ void getElementsFromLine(const std::string& line, const vector<char>& _seps, std
 			{ checkSep =  line[t] == _seps[i];}
 			t += checkSep ? 1:0;
 		}
-		string v = "";
+		std::string v = "";
 		checkSep = true;
 		while (checkSep && t < len)
 		{
@@ -121,18 +120,12 @@ void getElementsFromLine(const std::string& line, const vector<char>& _seps, std
 	return;
 }
 
-bool getLineFromFile(FILE*& _fileStream, string& _line)
+bool getLineFromFile(std::ifstream& _fileStream, std::string& _line)
 {
-	char *line = NULL;
-	size_t len = 0;
-	if (getline(&line, &len, _fileStream) != -1)
+	if (std::getline(_fileStream, _line))
 	{
-		string l(line);
-		if (l[l.size() -1 ] == '\n' )
-		{l.erase(l.size()-1,1);}
-		_line = l;
-		free(line);
-		line = NULL;
+		if (!_line.empty() && _line.back() == '\r')
+		{	_line.pop_back();	}
 		return true;
 	}
 	else
@@ -142,17 +135,14 @@ bool getLineFromFile(FILE*& _fileStream, string& _line)
 	}
 }
 
-bool getFirstElementInLineFromFile(FILE*& _fileStream, string& _line)
+bool getFirstElementInLineFromFile(std::ifstream& _fileStream, std::string& _line)
 {
-	char *line = NULL;
-	size_t len = 0;
-	if (getline(&line, &len, _fileStream) != -1)
+	std::string rawLine;
+	if (std::getline(_fileStream, rawLine))
 	{
-		vector<string> ele;
-		getElementsFromLine(line, len, 1, ele);
+		std::vector<std::string> ele;
+		getElementsFromLine(rawLine, 1, ele);
 		_line = ele[0];
-		free(line);
-		line = NULL;
 		return true;
 	}
 	else
@@ -162,40 +152,29 @@ bool getFirstElementInLineFromFile(FILE*& _fileStream, string& _line)
 	}
 }
 
-bool getFirstAndSecondElementInLine(FILE*& _fileStream, uint64_t& _kIndex, ITYPE& _index)
+bool getFirstAndSecondElementInLine(std::ifstream& _fileStream, uint64_t& _kIndex, ITYPE& _index)
 {
-	char *line = NULL;
-	size_t len = 0;
-	if (getline(&line, &len, _fileStream) != -1)
+	std::string rawLine;
+	if (std::getline(_fileStream, rawLine))
 	{
-		// Take the first element and put it into _kIndex: type IKMER
-		// Take the second element and put it into _index: type ITYPE
-		vector<string> ele;
-		getElementsFromLine(line, len, 2, ele);
-
-		_kIndex = atoll(ele[0].c_str());
-		_index = atol(ele[1].c_str());
-		free(line);
-                line = NULL;
+		std::vector<std::string> ele;
+		getElementsFromLine(rawLine, 2, ele);
+		_kIndex = std::stoull(ele[0]);
+		_index = std::stol(ele[1]);
 		return true;
 	}
 	return false;
 }
 
-bool getFirstAndSecondElementInLine(FILE*& _fileStream, std::string& _line, ITYPE& _freq)
+bool getFirstAndSecondElementInLine(std::ifstream& _fileStream, std::string& _line, ITYPE& _freq)
 {
-	char *line = NULL;
-	size_t len = 0;
-	if (getline(&line, &len, _fileStream) != -1)
+	std::string rawLine;
+	if (std::getline(_fileStream, rawLine))
 	{
-		// Take first element and put it into _line
-		// Take second element and put it into _freq
-		vector<string> ele;
-		getElementsFromLine(line, len, 2, ele);
+		std::vector<std::string> ele;
+		getElementsFromLine(rawLine, 2, ele);
 		_line = ele[0];
-		_freq = atoi(ele[1].c_str());
-		free(line);
-                line = NULL;
+		_freq = std::stoi(ele[1]);
 		return true;
 	}
 	return false;
@@ -204,15 +183,15 @@ bool getFirstAndSecondElementInLine(FILE*& _fileStream, std::string& _line, ITYP
 
 void mergePairedFiles(const char* _file1, const char* _file2, const char* _objFile)
 {
-        string line1, line2 = "";
-        vector<string> ele1;
-        vector<string> ele2;
-        vector<char> sep;
+        std::string line1, line2 = "";
+        std::vector<std::string> ele1;
+        std::vector<std::string> ele2;
+        std::vector<char> sep;
         sep.push_back(' ');
         sep.push_back('/');
         sep.push_back('\t');
-        FILE * fd1 = fopen(_file1, "r");
-        FILE * fd2 = fopen(_file2, "r");
+        std::ifstream fd1(_file1);
+        std::ifstream fd2(_file2);
         getLineFromFile(fd1, line1);
         getLineFromFile(fd2, line2);
         if (line1[0] != line2[0])
@@ -227,9 +206,9 @@ void mergePairedFiles(const char* _file1, const char* _file2, const char* _objFi
                 exit(1);
         }
         sep.push_back(delim);
-        rewind(fd1);
-        rewind(fd2);
-        ofstream fout(_objFile, std::ios::binary);
+        fd1.clear(); fd1.seekg(0);
+        fd2.clear(); fd2.seekg(0);
+        std::ofstream fout(_objFile, std::ios::binary);
         while(getLineFromFile(fd1, line1) && getLineFromFile(fd2, line2))
         {
                 if (line1[0] == delim && line2[0] == delim)
@@ -243,11 +222,10 @@ void mergePairedFiles(const char* _file1, const char* _file2, const char* _objFi
                                 perror("Error: read id does not match between files!");
                                 exit(1);
                         }
-                        fout << ">" << ele1[0] << endl;
+                        fout << ">" << ele1[0] << std::endl;
                         if (getLineFromFile(fd1, line1) && getLineFromFile(fd2, line2))
                         {
-                                // Add "N" to concatenate sequences, and separate content of each sequence
-                                fout << line1 << "N" << line2 << endl;
+                                fout << line1 << "N" << line2 << std::endl;
                                 if (getLineFromFile(fd1, line1) && getLineFromFile(fd2, line2))
                                 {
                                         if (getLineFromFile(fd1, line1) && getLineFromFile(fd2, line2))
@@ -262,22 +240,19 @@ void mergePairedFiles(const char* _file1, const char* _file2, const char* _objFi
                         continue;
                 }
         }
-        fclose(fd1);
-        fclose(fd2);
+        fd1.close();
+        fd2.close();
         fout.close();
 }
 
 void deleteFile(const char* _filename)
 {
-        if (_filename != NULL)
+        if (_filename != nullptr)
                 remove(_filename);
 }
 
 bool validFile(const char* _file)
 {
-        FILE * fd = fopen(_file, "r");
-        if (fd == NULL)
-        {       return false;   }
-        fclose(fd);
-        return true;
+        std::ifstream fd(_file);
+        return fd.good();
 }

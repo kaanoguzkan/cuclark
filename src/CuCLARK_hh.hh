@@ -43,6 +43,7 @@
 #include "./dataType.hh"
 #include "./HashTableStorage_hh.hh"
 #include "./CuClarkDB.cuh"
+#include <memory>
 
 //~ #include <bitset>
 
@@ -81,9 +82,9 @@ class CuCLARK
 		bool					m_isSpecificTargetsPresent;
 
 		// Dictionary k-mers <---> TargetsID
-		EHashtable<HKMERr, rElement> *	m_centralHt;
-//// new db		
-		CuClarkDB<HKMERr> * 			m_cuClarkDb;
+		std::unique_ptr<EHashtable<HKMERr, rElement>> m_centralHt;
+//// new db
+		std::unique_ptr<CuClarkDB<HKMERr>> m_cuClarkDb;
 
 //// new
 		// Tables for storing results
@@ -190,7 +191,7 @@ class CuCLARK
 				const char* 					_fileResult
 				)  const;
 
-		void getdbName(char * 						_dbname
+		void getdbName(std::string& 					_dbname
 			      ) const;
 };
 
@@ -201,7 +202,7 @@ class CuCLARK
 #include <omp.h>
 #endif
 
-#include <string.h>
+#include <cstring>
 #include <fstream>
 #include <time.h>
 #include <unistd.h>
@@ -215,7 +216,7 @@ class CuCLARK
 #include "./kmersConversion.hh"
 #include "./analyser.hh"
 
-using namespace std;
+
 
 template <typename HKMERr>
 CuCLARK<HKMERr>::CuCLARK(const size_t& 	_kmerLength,
@@ -301,11 +302,11 @@ CuCLARK<HKMERr>::CuCLARK(const size_t& 	_kmerLength,
 
 	m_separators[' '] = 1;	m_separators['\t'] = 1; 	m_separators['\n'] = 1;
 
-	vector<string> filesHT, filesHTC;
+	std::vector<std::string> filesHT, filesHTC;
 	size_t sizeMotherHT = 0;
 	if (!getTargetsData(_filesName, filesHT, filesHTC, _creatingkmfiles, _samplingFactor))
 	{
-		cerr << "Starting the creation of the database of targets specific " << m_kmerSize << "-mers from input files..." << endl;
+		std::cerr << "Starting the creation of the database of targets specific " << m_kmerSize << "-mers from input files..." << std::endl;
 		sizeMotherHT = makeSpecificTargetSets(filesHT, filesHTC);
 	}
 	loadSpecificTargetSets(filesHT, filesHTC, sizeMotherHT, _samplingFactor, _mmapLoading);
@@ -314,7 +315,6 @@ CuCLARK<HKMERr>::CuCLARK(const size_t& 	_kmerLength,
 template <typename HKMERr>
 CuCLARK<HKMERr>::~CuCLARK()
 {
-	delete m_centralHt;
 }
 
 template <typename HKMERr>
@@ -341,40 +341,34 @@ void CuCLARK<HKMERr>::clearReadData()
  *  Create targets specific k-mers files.
  */
 template <typename HKMERr>
-void CuCLARK<HKMERr>::createTargetFilesNames(vector<string>& _filesHT, vector<string>& _filesHTC) const
+void CuCLARK<HKMERr>::createTargetFilesNames(std::vector<std::string>& _filesHT, std::vector<std::string>& _filesHTC) const
 {
 	for(size_t t = 0 ; t < m_labels_c.size(); t++)
 	{
-		char * fname = (char*) calloc(100, sizeof(char));
+		std::string nameHTO;
 		if (m_isLightLoading)
 		{
-			sprintf(fname, "%s/%s_k%lu_light.ht", m_folder, m_labels_c[t].c_str(), (size_t) m_kmerSize);
+			nameHTO = std::string(m_folder) + "/" + m_labels_c[t] + "_k" + std::to_string(m_kmerSize) + "_light.ht";
 		}
 		else
 		{
-			sprintf(fname, "%s/%s_k%lu.ht", m_folder, m_labels_c[t].c_str(),(size_t) m_kmerSize);
+			nameHTO = std::string(m_folder) + "/" + m_labels_c[t] + "_k" + std::to_string(m_kmerSize) + ".ht";
 		}
-		string nameHTO(fname);
 		_filesHTC.push_back(nameHTO);
-		free(fname);
-		fname = NULL;
 	}
 
 	for(size_t t = 0 ; t < m_labels.size(); t++)
 	{
-		char * fname = (char*) calloc(100, sizeof(char));
+		std::string nameHT;
 		if (m_isLightLoading)
 		{
-			sprintf(fname, "%s/%s_k%lu_light.ht", m_folder, m_labels_c[t].c_str(), (size_t) m_kmerSize);
+			nameHT = std::string(m_folder) + "/" + m_labels_c[t] + "_k" + std::to_string(m_kmerSize) + "_light.ht";
 		}
 		else
 		{
-			sprintf(fname, "%s/%s_k%lu.ht", m_folder, m_labels[t].c_str(), (size_t) m_kmerSize);
+			nameHT = std::string(m_folder) + "/" + m_labels[t] + "_k" + std::to_string(m_kmerSize) + ".ht";
 		}
-		string nameHT(fname);
 		_filesHT.push_back(nameHT);
-		free(fname);
-		fname = NULL;
 	}
 }
 
@@ -384,48 +378,50 @@ void CuCLARK<HKMERr>::createTargetFilesNames(vector<string>& _filesHT, vector<st
 template <typename HKMERr>
 void CuCLARK<HKMERr>::run(const char* _filesToObjects, const char* _fileToResults, const ITYPE& _minCountO, const bool& _isExtended)
 {
-	FILE* fd = fopen(_fileToResults, "r");
-	m_isPaired = false;
-	m_isExtended = _isExtended;
-	if (fd == NULL )
 	{
-		cout << "Processing file \'" << _filesToObjects << "\' in " << m_numBatches << " batches using "<< m_nbCPU << " CPU thread(s)." <<  endl;
-		CuCLARK::runSimple(_filesToObjects, _fileToResults, _minCountO);
-		return;
+		std::ifstream fd(_fileToResults);
+		m_isPaired = false;
+		m_isExtended = _isExtended;
+		if (!fd.is_open())
+		{
+			std::cout << "Processing file \'" << _filesToObjects << "\' in " << m_numBatches << " batches using "<< m_nbCPU << " CPU thread(s)." <<  std::endl;
+			CuCLARK::runSimple(_filesToObjects, _fileToResults, _minCountO);
+			return;
+		}
 	}
-	fclose(fd);
 
-	fd = fopen(_filesToObjects, "r");
-	string line = "";
-	getLineFromFile(fd, line);
-	vector<string> ele;
-	vector<char> seps;
-	seps.push_back(' ');
-	seps.push_back('\t');
-	seps.push_back(',');
-	fclose(fd);
-
-	getElementsFromLine(line, seps, ele);	
-
-	if (line[0] == '>' || line[0] == '@' || ele.size() == 2)
 	{
-		cout << "Processing file\'" << _filesToObjects << "\' in " << m_numBatches << " batches using "<< m_nbCPU << " CPU thread(s)." <<  endl;
-		CuCLARK::runSimple(_filesToObjects, _fileToResults, _minCountO);
-		return;
+		std::ifstream fd(_filesToObjects);
+		std::string line = "";
+		getLineFromFile(fd, line);
+		std::vector<std::string> ele;
+		std::vector<char> seps;
+		seps.push_back(' ');
+		seps.push_back('\t');
+		seps.push_back(',');
+
+		getElementsFromLine(line, seps, ele);
+
+		if (line[0] == '>' || line[0] == '@' || ele.size() == 2)
+		{
+			std::cout << "Processing file\'" << _filesToObjects << "\' in " << m_numBatches << " batches using "<< m_nbCPU << " CPU thread(s)." <<  std::endl;
+			CuCLARK::runSimple(_filesToObjects, _fileToResults, _minCountO);
+			return;
+		}
 	}
-	
+
 	// run for multiple inputs
-	FILE * r_fd = fopen(_fileToResults, "r");
-	FILE * o_fd = fopen(_filesToObjects, "r");
-	string o_line = "", r_line = "";
-	cout <<  "Using " << omp_get_max_threads() << " CPU thread(s)." <<  endl;
+	std::ifstream r_fd(_fileToResults);
+	std::ifstream o_fd(_filesToObjects);
+	std::string o_line = "", r_line = "";
+	std::cout <<  "Using " << omp_get_max_threads() << " CPU thread(s)." <<  std::endl;
 	while (getLineFromFile(o_fd, o_line) && getLineFromFile(r_fd, r_line))
 	{
-		cout << "> Processing file \'" << o_line.c_str() << "\' in " << m_numBatches << " batches."<< endl;
-		CuCLARK::runSimple(o_line.c_str(), r_line.c_str(), _minCountO); 
+		std::cout << "> Processing file \'" << o_line.c_str() << "\' in " << m_numBatches << " batches."<< std::endl;
+		CuCLARK::runSimple(o_line.c_str(), r_line.c_str(), _minCountO);
 	}
-	fclose(r_fd); 
-	fclose(o_fd);
+	r_fd.close();
+	o_fd.close();
 	return;
 }
 
@@ -435,75 +431,68 @@ void CuCLARK<HKMERr>::run(const char* _filesToObjects, const char* _fileToResult
 template <typename HKMERr>
 void CuCLARK<HKMERr>::run(const char* _pairedfile1, const char* _pairedfile2, const char* _fileToResults, const ITYPE& _minCountO, const bool& _isExtended)
 {
-	FILE* fd 	= fopen(_fileToResults, "r");
 	m_isPaired 	= true;
 	m_isExtended 	= _isExtended;
-	char * mergedFiles = NULL;
-	if (fd == NULL )
+	std::string mergedFiles;
 	{
-		// Merge _pairedfile1 + _pairedfile2
-		mergedFiles = (char *) calloc(strlen(_pairedfile1)+25, 1);
-		sprintf(mergedFiles,"%s_ConcatenatedByCLARK.fa",_pairedfile1);
-		mergePairedFiles(_pairedfile1, _pairedfile2, mergedFiles);
-		cout << "Processing file: \'" << mergedFiles << "\' in " << m_numBatches << " batches using "<< m_nbCPU << " CPU thread(s)." <<  endl;
-		CuCLARK::runSimple(mergedFiles, _fileToResults, _minCountO);
-		// Delete file
-		deleteFile(mergedFiles);
-		free(mergedFiles);
-		mergedFiles = NULL;
-		return;
+		std::ifstream fd(_fileToResults);
+		if (!fd.is_open())
+		{
+			// Merge _pairedfile1 + _pairedfile2
+			mergedFiles = std::string(_pairedfile1) + "_ConcatenatedByCLARK.fa";
+			mergePairedFiles(_pairedfile1, _pairedfile2, mergedFiles.c_str());
+			std::cout << "Processing file: \'" << mergedFiles << "\' in " << m_numBatches << " batches using "<< m_nbCPU << " CPU thread(s)." <<  std::endl;
+			CuCLARK::runSimple(mergedFiles.c_str(), _fileToResults, _minCountO);
+			// Delete file
+			deleteFile(mergedFiles.c_str());
+			return;
+		}
 	}
-	fclose(fd);
 
-	fd = fopen(_pairedfile1, "r");
-	string line 	= "";
-	getLineFromFile(fd, line);
-	vector<string> ele;
-	vector<char> seps;
-	seps.push_back(' ');
-	seps.push_back('\t');
-	seps.push_back(',');
-	fclose(fd);
-
-	getElementsFromLine(line, seps, ele);
-	if (line[0] == '>' || line[0] == '@' || ele.size() == 2)
 	{
-		// Merge _pairedfile1 + _pairedfile2 
-		mergedFiles = (char *) calloc(strlen(_pairedfile1)+25, 1);
-		sprintf(mergedFiles,"%s_ConcatenatedByCLARK.fa",_pairedfile1);
-		mergePairedFiles(_pairedfile1, _pairedfile2, mergedFiles);
-		cout << "Processing file: \'" << mergedFiles << "\' in " << m_numBatches << " batches using "<< m_nbCPU << " CPU thread(s)." <<  endl;
-		CuCLARK::runSimple(mergedFiles, _fileToResults, _minCountO);
-		// Delete file
-		deleteFile(mergedFiles);
-		free(mergedFiles);
-		mergedFiles = NULL;
-		return;
+		std::ifstream fd(_pairedfile1);
+		std::string line 	= "";
+		getLineFromFile(fd, line);
+		std::vector<std::string> ele;
+		std::vector<char> seps;
+		seps.push_back(' ');
+		seps.push_back('\t');
+		seps.push_back(',');
+
+		getElementsFromLine(line, seps, ele);
+		if (line[0] == '>' || line[0] == '@' || ele.size() == 2)
+		{
+			// Merge _pairedfile1 + _pairedfile2
+			mergedFiles = std::string(_pairedfile1) + "_ConcatenatedByCLARK.fa";
+			mergePairedFiles(_pairedfile1, _pairedfile2, mergedFiles.c_str());
+			std::cout << "Processing file: \'" << mergedFiles << "\' in " << m_numBatches << " batches using "<< m_nbCPU << " CPU thread(s)." <<  std::endl;
+			CuCLARK::runSimple(mergedFiles.c_str(), _fileToResults, _minCountO);
+			// Delete file
+			deleteFile(mergedFiles.c_str());
+			return;
+		}
 	}
-	
+
 	// run for multiple inputs
-	FILE * r_fd 	= fopen(_fileToResults, "r");
-	FILE * o1_fd 	= fopen(_pairedfile1, "r");
-	FILE * o2_fd 	= fopen(_pairedfile2, "r");
-	string o1_line 	= "", o2_line   = "", r_line = "";
-	cout <<  "Using " << omp_get_max_threads() << " CPU thread(s)." <<  endl;
+	std::ifstream r_fd(_fileToResults);
+	std::ifstream o1_fd(_pairedfile1);
+	std::ifstream o2_fd(_pairedfile2);
+	std::string o1_line 	= "", o2_line   = "", r_line = "";
+	std::cout <<  "Using " << omp_get_max_threads() << " CPU thread(s)." <<  std::endl;
 	while (getLineFromFile(o1_fd, o1_line) && getLineFromFile(o2_fd, o2_line) && getLineFromFile(r_fd, r_line))
 	{
-		// Merge _pairedfile1 + _pairedfile2 
-		mergedFiles = (char *) calloc(strlen(o1_line.c_str())+25, 1);
-		sprintf(mergedFiles,"%s_ConcatenatedByCLARK.fa",o1_line.c_str());
-		mergePairedFiles(o1_line.c_str(), o2_line.c_str(), mergedFiles);
+		// Merge _pairedfile1 + _pairedfile2
+		mergedFiles = o1_line + "_ConcatenatedByCLARK.fa";
+		mergePairedFiles(o1_line.c_str(), o2_line.c_str(), mergedFiles.c_str());
 
-		cout << "> Processing file: \'" << mergedFiles << "\' in " << m_numBatches << " batches."<< endl;
-		CuCLARK::runSimple(mergedFiles, r_line.c_str(), _minCountO);
+		std::cout << "> Processing file: \'" << mergedFiles << "\' in " << m_numBatches << " batches."<< std::endl;
+		CuCLARK::runSimple(mergedFiles.c_str(), r_line.c_str(), _minCountO);
 		// Delete file
-		deleteFile(mergedFiles);
-		free(mergedFiles);
-		mergedFiles = NULL;
+		deleteFile(mergedFiles.c_str());
 	}
-	fclose(r_fd);
-	fclose(o1_fd);
-	fclose(o2_fd);
+	r_fd.close();
+	o1_fd.close();
+	o2_fd.close();
 	return;
 }
 
@@ -526,7 +515,7 @@ void CuCLARK<HKMERr>::runSimple(const char* _fileTofilesname, const char* _fileR
 	int fd = open(_fileTofilesname, O_RDONLY);
 	if (fd == -1 || fileSize == 0)
 	{
-		cerr << "Failed to open " << _fileTofilesname << endl;
+		std::cerr << "Failed to open " << _fileTofilesname << std::endl;
 		return;
 	}
 	uint8_t *map;
@@ -534,18 +523,18 @@ void CuCLARK<HKMERr>::runSimple(const char* _fileTofilesname, const char* _fileR
 	if ( map == MAP_FAILED )
 	{
 		close(fd);
-		cerr << "Failed to mmapping the file." << endl;
+		std::cerr << "Failed to mmapping the file." << std::endl;
 		return;
 	}
 	// Checking file to store result:
-	string sfileResult(_fileResult);
+	std::string sfileResult(_fileResult);
 	sfileResult += ".csv";
 	const char* fileResult = sfileResult.c_str();
 	// Try to access and erase content of the file If non-empty
 	FILE * _fout = fopen(fileResult,"w");
-	if (_fout == NULL)
+	if (_fout == nullptr)
 	{
-		cerr << "Failed to create/open file result: " << fileResult << endl;
+		std::cerr << "Failed to create/open file result: " << fileResult << std::endl;
 		return;
 	}
 
@@ -554,20 +543,20 @@ void CuCLARK<HKMERr>::runSimple(const char* _fileTofilesname, const char* _fileR
 	fclose(_fout);
 
 
-	gettimeofday(&requestStart, NULL);
+	gettimeofday(&requestStart, nullptr);
 	///////////////////////////////////////////////////////////////////////
 	//~ getObjectsDataComputeFull(map, fileSize);
 	getObjectsDataComputeFullGPU(map, fileSize, fileResult);
 	//~ printExtendedResults(fileResult);
 	///////////////////////////////////////////////////////////////////////
-	gettimeofday(&requestEnd, NULL);
+	gettimeofday(&requestEnd, nullptr);
 	// Measurement execution time
 	printSpeedStats(requestEnd, requestStart, fileResult);
 
 	msync(map, fileSize, MS_SYNC);
 	if (munmap(map, fileSize) == -1)
 	{
-		cerr << "Error un-mmapping the file." << endl;
+		std::cerr << "Error un-mmapping the file." << std::endl;
 	}
 	close(fd);
 
@@ -579,16 +568,16 @@ void CuCLARK<HKMERr>::runSimple(const char* _fileTofilesname, const char* _fileR
  * 	This enables to store different databases in the same folder.
  */
 template <typename HKMERr>
-void CuCLARK<HKMERr>::getdbName(char *   _dbname) const
+void CuCLARK<HKMERr>::getdbName(std::string& _dbname) const
 {
-	size_t sizeHTS =  m_labels.size() + m_labels_c.size(); 
+	size_t sizeHTS =  m_labels.size() + m_labels_c.size();
 	if (m_isLightLoading)
 	{
-		sprintf(_dbname,"%s/db_central_k%lu_t%lu_s%lu_m%lu_light_%lu.tsk",m_folder,(size_t)m_kmerSize,sizeHTS,(size_t) HTSIZE,(size_t)m_minCountTarget,(size_t) m_iterKmers);	
+		_dbname = std::string(m_folder) + "/db_central_k" + std::to_string(m_kmerSize) + "_t" + std::to_string(sizeHTS) + "_s" + std::to_string((size_t)HTSIZE) + "_m" + std::to_string((size_t)m_minCountTarget) + "_light_" + std::to_string((size_t)m_iterKmers) + ".tsk";
 	}
 	else
 	{
-		sprintf(_dbname,"%s/db_central_k%lu_t%lu_s%lu_m%lu.tsk",m_folder,(size_t)m_kmerSize,sizeHTS,(size_t) HTSIZE,(size_t)m_minCountTarget);
+		_dbname = std::string(m_folder) + "/db_central_k" + std::to_string(m_kmerSize) + "_t" + std::to_string(sizeHTS) + "_s" + std::to_string((size_t)HTSIZE) + "_m" + std::to_string((size_t)m_minCountTarget) + ".tsk";
 	}
 }
 
@@ -597,8 +586,8 @@ void CuCLARK<HKMERr>::getdbName(char *   _dbname) const
  * If that fails, try to recover it from saved targets-specific data.
  */
 template <typename HKMERr>
-void CuCLARK<HKMERr>::loadSpecificTargetSets(const vector<string>& _filesHT, 
-		const vector<string>& 	_filesHTC, 
+void CuCLARK<HKMERr>::loadSpecificTargetSets(const std::vector<std::string>& _filesHT, 
+		const std::vector<std::string>& 	_filesHTC, 
 		const size_t& 		_sizeMotherHT,
 		const ITYPE& 		_samplingFactor,	
 		const bool&  		_mmapLoading
@@ -607,48 +596,46 @@ void CuCLARK<HKMERr>::loadSpecificTargetSets(const vector<string>& _filesHT,
 	size_t kmersLoaded = 0;
 	ITYPE minCount = m_minCountTarget;
 ////	m_centralHt = new EHashtable<HKMERr, rElement>(m_kmerSize, m_labels, m_labels_c);
-	m_cuClarkDb = new CuClarkDB<HKMERr>(m_numDevices, m_kmerSize, m_numBatches, m_targetsName.size()-1);
-	char * cfname = (char*) calloc(130, sizeof(char));
+	m_cuClarkDb = std::make_unique<CuClarkDB<HKMERr>>(m_numDevices, m_kmerSize, m_numBatches, m_targetsName.size()-1);
+	std::string cfname;
 	getdbName(cfname);
 
-	cerr << "Loading database [" << cfname << ".*] (s=" << _samplingFactor<< ")..." << endl;
+	std::cerr << "Loading database [" << cfname << ".*] (s=" << _samplingFactor<< ")..." << std::endl;
 
 	size_t fileSize;
-	
+
 #ifdef TIME_DBLOADING
 	struct timeval requestStart, requestEnd;
-	gettimeofday(&requestStart, NULL);
+	gettimeofday(&requestStart, nullptr);
 #endif
 ////	if (m_centralHt->Read(cfname, fileSize, m_nbCPU, _samplingFactor, _mmapLoading))
-	if (m_cuClarkDb->read(cfname, fileSize, m_dbParts, _samplingFactor, _mmapLoading))
+	if (m_cuClarkDb->read(cfname.c_str(), fileSize, m_dbParts, _samplingFactor, _mmapLoading))
 	{
 #ifdef TIME_DBLOADING
-		gettimeofday(&requestEnd, NULL);
+		gettimeofday(&requestEnd, nullptr);
 		double diff = (requestEnd.tv_sec - requestStart.tv_sec) + (requestEnd.tv_usec - requestStart.tv_usec) / 1000000.0;
-		cerr << "Loading time: " << diff << " s\n";
+		std::cerr << "Loading time: " << diff << " s\n";
 #endif
-		//~ cerr << "Loading done (database size: " << fileSize / 1000000<<" MB)" << endl;
-		free(cfname);
-		cfname = NULL;
+		//~ cerr << "Loading done (database size: " << fileSize / 1000000<<" MB)" << std::endl;
 		return;
 	}
 	if ( _filesHT.size() + _filesHTC.size() == 0)
 	{
-		cerr << "Failed to find the database." << endl;
+		std::cerr << "Failed to find the database." << std::endl;
 		exit(-1);	
 	}
-	cerr << "The database will be recovered from saved targets-specific data." << endl;
+	std::cerr << "The database will be recovered from saved targets-specific data." << std::endl;
 
-	m_centralHt = new EHashtable<HKMERr, rElement>(m_kmerSize, m_labels, m_labels_c);
+	m_centralHt = std::make_unique<EHashtable<HKMERr, rElement>>(m_kmerSize, m_labels, m_labels_c);
 	
 	for(size_t t = 0 ; t < _filesHT.size(); t++)
 	{
-		string nameHT =  _filesHT[t];
+		std::string nameHT =  _filesHT[t];
 
 		FILE* fd = fopen(nameHT.c_str(),"r");
-		if (fd == NULL)
+		if (fd == nullptr)
 		{
-			cerr << "Failed to open " << nameHT << endl;
+			std::cerr << "Failed to open " << nameHT << std::endl;
 		}
 		else
 		{
@@ -656,16 +643,16 @@ void CuCLARK<HKMERr>::loadSpecificTargetSets(const vector<string>& _filesHT,
 			m_centralHt->Load(nameHT, m_labels[t], minCount);
 			kmersLoaded = m_centralHt->Size();
 		}
-		cerr << "\rDataset " << t+1 << " loaded.   " ;
+		std::cerr << "\rDataset " << t+1 << " loaded.   " ;
 	}
 	for(size_t t = 0 ; t < _filesHTC.size(); t++)
 	{
-		string nameHTO =  _filesHTC[t];
+		std::string nameHTO =  _filesHTC[t];
 
 		FILE* fd = fopen(nameHTO.c_str(),"r");
-		if (fd == NULL)
+		if (fd == nullptr)
 		{
-			cerr << "Failed to open " << nameHTO << endl;
+			std::cerr << "Failed to open " << nameHTO << std::endl;
 		}
 		else
 		{
@@ -673,16 +660,14 @@ void CuCLARK<HKMERr>::loadSpecificTargetSets(const vector<string>& _filesHT,
 			m_centralHt->Load(nameHTO, m_labels_c[t], minCount);
 			kmersLoaded = m_centralHt->Size();
 		}
-		cerr << "\rDataset " << t + 1 + _filesHT.size() << " loaded.    " ;
+		std::cerr << "\rDataset " << t + 1 + _filesHT.size() << " loaded.    " ;
 	}
-	cerr << kmersLoaded  << " " << m_kmerSize << "-mers finally loaded. ";
-	cerr << "Creating database in disk..." << endl;
+	std::cerr << kmersLoaded  << " " << m_kmerSize << "-mers finally loaded. ";
+	std::cerr << "Creating database in disk..." << std::endl;
 
 	m_centralHt->SortAllHashTable();
-	m_centralHt->Write(cfname, 0, false);
-	free(cfname);
-	cfname = NULL;
-	cerr << "Central Hashtable successfully stored in disk." << endl;
+	m_centralHt->Write(cfname.c_str(), 0, false);
+	std::cerr << "Central Hashtable successfully stored in disk." << std::endl;
 	exit(-1);
 }
 
@@ -690,7 +675,7 @@ void CuCLARK<HKMERr>::loadSpecificTargetSets(const vector<string>& _filesHT,
  *  Create database of targets specific k-mers.
  */
 template <typename HKMERr>
-size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const vector<string>& _filesHT, const vector<string>& _filesHTC) const
+size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const std::vector<std::string>& _filesHT, const std::vector<std::string>& _filesHTC) const
 {
 	size_t nt = 0;
 	if (m_isLightLoading)
@@ -700,8 +685,8 @@ size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const vector<string>& _filesHT, c
 		for(size_t t = 0 ; t < m_targetsID.size(); t++)
 		{
 			FILE* fd = fopen(m_targetsID[t].first.c_str(),"r");
-			if (fd == NULL)
-			{        cerr << "Failed to open " << m_targetsID[t].first << endl;
+			if (fd == nullptr)
+			{        std::cerr << "Failed to open " << m_targetsID[t].first << std::endl;
 				continue;
 			}
 			char c[MAXRSIZE];
@@ -757,14 +742,14 @@ size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const vector<string>& _filesHT, c
 							i++;
 							continue;
 						}
-						cerr << m_targetsID[t].first << ": " ;
-						cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << endl;
+						std::cerr << m_targetsID[t].first << ": " ;
+						std::cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << std::endl;
 					}
 					len = fread(&c, 1, MAXRSIZE, fd );
 					i = 0;
 				}
 				fclose(fd);
-				cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")    ";
+				std::cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")    ";
 				continue;
 			}
 			// fastq
@@ -850,48 +835,48 @@ size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const vector<string>& _filesHT, c
 							i++;
 							continue;
 						}
-						cerr << m_targetsID[t].first << ": " ;
-						cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << endl;
+						std::cerr << m_targetsID[t].first << ": " ;
+						std::cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << std::endl;
 					}
 					len = fread(&c, 1, MAXRSIZE, fd );
 					i = 0;
 				}
 				fclose(fd);
-				cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
+				std::cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
 				continue;
 			}
 			// spectrum form
-			fseek(fd, 0, 0);
-			string s_kmer = "";
-			ITYPE val;
-			uint8_t counter = 0;
-			while (getFirstAndSecondElementInLine(fd, s_kmer, val))
-			{
-				if (counter % m_iterKmers == 0 && val > m_minCountTarget)
-				{
-					commonKmersHT.addElement(s_kmer, m_targetsID[t].second, (size_t) val);
-					counter = 0;
-				}
-				counter++;
-				continue;
-			}
 			fclose(fd);
-			cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
+			{
+				std::ifstream ifs(m_targetsID[t].first);
+				std::string s_kmer = "";
+				ITYPE val;
+				uint8_t counter = 0;
+				while (getFirstAndSecondElementInLine(ifs, s_kmer, val))
+				{
+					if (counter % m_iterKmers == 0 && val > m_minCountTarget)
+					{
+						commonKmersHT.addElement(s_kmer, m_targetsID[t].second, (size_t) val);
+						counter = 0;
+					}
+					counter++;
+					continue;
+				}
+			}
+			std::cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
 		}
-		cerr << nt << " nt read in total." << endl;
-		cerr << "Mother Hashtable successfully built. "<<commonKmersHT.Size()<<" " << m_kmerSize << "-mers stored." <<  endl;
+		std::cerr << nt << " nt read in total." << std::endl;
+		std::cerr << "Mother Hashtable successfully built. "<<commonKmersHT.Size()<<" " << m_kmerSize << "-mers stored." <<  std::endl;
 		size_t sizeMotherTable = commonKmersHT.Size();
 
 		commonKmersHT.SortAllHashTable(2);
 		commonKmersHT.RemoveCommon(m_labels_c, m_minCountTarget);
-		char * cfname = (char*) calloc(130, sizeof(char));
+		std::string cfname;
 		getdbName(cfname);
 
-		cerr << "Creating light database in disk..." << endl;
-		uint64_t nbElement = commonKmersHT.Write(cfname,2);
-		free(cfname);
-		cfname = NULL;
-		cerr << nbElement << " " << m_kmerSize << "-mers successfully stored in database." << endl;
+		std::cerr << "Creating light database in disk..." << std::endl;
+		uint64_t nbElement = commonKmersHT.Write(cfname.c_str(),2);
+		std::cerr << nbElement << " " << m_kmerSize << "-mers successfully stored in database." << std::endl;
 
 		return sizeMotherTable;
 	}
@@ -901,9 +886,9 @@ size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const vector<string>& _filesHT, c
 		for(size_t t = 0 ; t < m_targetsID.size(); t++)
 		{
 			FILE* fd = fopen(m_targetsID[t].first.c_str(),"r");
-			if (fd == NULL)
+			if (fd == nullptr)
 			{
-				cerr << "Failed to open " << m_targetsID[t].first << endl;
+				std::cerr << "Failed to open " << m_targetsID[t].first << std::endl;
 			}
 			else
 			{
@@ -974,14 +959,14 @@ size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const vector<string>& _filesHT, c
 								i++;   
 								continue;
 							}
-							cerr << m_targetsID[t].first << ": " ;
-							cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << endl;
+							std::cerr << m_targetsID[t].first << ": " ;
+							std::cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << std::endl;
 						}
 						len = fread(&c, 1, MAXRSIZE, fd );
 						i = 0;
 					}
 					fclose(fd);
-					cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")    ";
+					std::cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")    ";
 					continue;	
 				}
 				// fastq
@@ -1074,41 +1059,41 @@ size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const vector<string>& _filesHT, c
 								i++;    
 								continue;
 							}
-							cerr << m_targetsID[t].first << ": " ;
-							cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << endl;
+							std::cerr << m_targetsID[t].first << ": " ;
+							std::cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << std::endl;
 						}
 						len = fread(&c, 1, MAXRSIZE, fd );
 						i = 0;  
 					}
 					fclose(fd);
-					cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
+					std::cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
 					continue;
 				}
 				// spectrum form
-				fseek(fd, 0, 0);
-				string s_kmer = "";
-				ITYPE val;
-				while (getFirstAndSecondElementInLine(fd, s_kmer, val))
-				{	if (val > m_minCountTarget)
-					{	commonKmersHT.addElement(s_kmer, m_targetsID[t].second, (size_t) val);}
-				}
 				fclose(fd);
-				cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
+				{
+					std::ifstream ifs(m_targetsID[t].first);
+					std::string s_kmer = "";
+					ITYPE val;
+					while (getFirstAndSecondElementInLine(ifs, s_kmer, val))
+					{	if (val > m_minCountTarget)
+						{	commonKmersHT.addElement(s_kmer, m_targetsID[t].second, (size_t) val);}
+					}
+				}
+				std::cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
 			}
 		}
-		cerr << nt << " nt read in total." << endl;
-		cerr << "Mother Hashtable successfully built. " << commonKmersHT.Size() << " " << m_kmerSize << "-mers stored." <<  endl;
+		std::cerr << nt << " nt read in total." << std::endl;
+		std::cerr << "Mother Hashtable successfully built. " << commonKmersHT.Size() << " " << m_kmerSize << "-mers stored." <<  std::endl;
 		size_t sizeMotherTable = commonKmersHT.Size();
 
 		commonKmersHT.SortAllHashTable(2);
 		commonKmersHT.RemoveCommon(m_labels_c, m_minCountTarget);
-		char * cfname = (char*) calloc(130, sizeof(char));
+		std::string cfname;
 		getdbName(cfname);
-		cerr << "Creating database in disk..." << endl;	
-		uint64_t nbElement = commonKmersHT.Write(cfname,2);
-		free(cfname);
-		cfname = NULL;
-		cerr << nbElement << " " << m_kmerSize << "-mers successfully stored in database." << endl;
+		std::cerr << "Creating database in disk..." << std::endl;
+		uint64_t nbElement = commonKmersHT.Write(cfname.c_str(),2);
+		std::cerr << nbElement << " " << m_kmerSize << "-mers successfully stored in database." << std::endl;
 
 		return sizeMotherTable;
 	}
@@ -1117,9 +1102,9 @@ size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const vector<string>& _filesHT, c
 	for(size_t t = 0 ; t < m_targetsID.size(); t++)
 	{
 		FILE* fd = fopen(m_targetsID[t].first.c_str(),"r");
-		if (fd == NULL)
+		if (fd == nullptr)
 		{
-			cerr << "Failed to open " << m_targetsID[t].first << endl;
+			std::cerr << "Failed to open " << m_targetsID[t].first << std::endl;
 		}
 		else
 		{
@@ -1188,14 +1173,14 @@ size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const vector<string>& _filesHT, c
 							i++;
 							continue;
 						}
-						cerr << m_targetsID[t].first << ": " ;
-						cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << endl;
+						std::cerr << m_targetsID[t].first << ": " ;
+						std::cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << std::endl;
 					}
 					len = fread(&c, 1, MAXRSIZE, fd );
 					i = 0;
 				}
 				fclose(fd);
-				cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")    ";
+				std::cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")    ";
 				continue;
 			}
 			if (len > 0 && c[0] == '@')
@@ -1287,30 +1272,32 @@ size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const vector<string>& _filesHT, c
 							i++;
 							continue;
 						}
-						cerr << m_targetsID[t].first << ": " ;
-						cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << endl;
+						std::cerr << m_targetsID[t].first << ": " ;
+						std::cerr << "Failed to process sequence -- wrong character found [ASCII]: " << (size_t) c << std::endl;
 					}
 					len = fread(&c, 1, MAXRSIZE, fd );
 					i = 0;
 				}
 				fclose(fd);
-				cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
+				std::cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
 				continue;
 			}
 			// spectrum form
-			fseek(fd, 0, 0);
-			string s_kmer = "";
-			ITYPE val;
-			while (getFirstAndSecondElementInLine(fd, s_kmer, val))
-			{       if (val > m_minCountTarget)
-				{       commonKmersHT.addElement(s_kmer, m_targetsID[t].second, (size_t) val);}
-			}
 			fclose(fd);
-			cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
+			{
+				std::ifstream ifs(m_targetsID[t].first);
+				std::string s_kmer = "";
+				ITYPE val;
+				while (getFirstAndSecondElementInLine(ifs, s_kmer, val))
+				{       if (val > m_minCountTarget)
+					{       commonKmersHT.addElement(s_kmer, m_targetsID[t].second, (size_t) val);}
+				}
+			}
+			std::cerr << "\r Progress report: (" <<t+1<< "/"<<m_targetsID.size()<<")              ";
 		}
 	}
-	cerr << nt << " nt read in total." << endl;
-	cerr << "Mother Hashtable successfully built. " << commonKmersHT.Size() << " " << m_kmerSize << "-mers stored." <<  endl;
+	std::cerr << nt << " nt read in total." << std::endl;
+	std::cerr << "Mother Hashtable successfully built. " << commonKmersHT.Size() << " " << m_kmerSize << "-mers stored." <<  std::endl;
 	size_t sizeMotherTable = commonKmersHT.Size();
 	//
 	commonKmersHT.SaveIntersectionMultiple(_filesHTC, m_labels_c);
@@ -1318,13 +1305,11 @@ size_t CuCLARK<HKMERr>::makeSpecificTargetSets(const vector<string>& _filesHT, c
 	//
 	commonKmersHT.SortAllHashTable(2);
 	commonKmersHT.RemoveCommon(m_labels_c, m_minCountTarget);
-	char * cfname = (char*) calloc(130, sizeof(char));
+	std::string cfname;
 	getdbName(cfname);
-	cerr << "Creating database in disk..." << endl;
-	uint64_t nbElement = commonKmersHT.Write(cfname,2);
-	free(cfname);
-	cfname = NULL;
-	cerr << nbElement << " " << m_kmerSize << "-mers successfully stored in database." << endl;
+	std::cerr << "Creating database in disk..." << std::endl;
+	uint64_t nbElement = commonKmersHT.Write(cfname.c_str(),2);
+	std::cerr << nbElement << " " << m_kmerSize << "-mers successfully stored in database." << std::endl;
 
 	return sizeMotherTable;
 	///////////////////////////////////////////////////////////////////////////////
@@ -1348,11 +1333,11 @@ void CuCLARK<HKMERr>::getObjectsDataComputeFullGPU(const uint8_t * _map,  const 
 		{
 			size_t i = bigSteps * i_r, i_l = 0, bigMax = bigSteps*(i_r+1);
 			
-			vector<size_t>	readsLength;
-			vector<size_t>	seqSNames;
-			vector<size_t>	seqENames;
-			vector<size_t>	readsSPos;
-			vector<size_t>	readsEPos;
+			std::vector<size_t>	readsLength;
+			std::vector<size_t>	seqSNames;
+			std::vector<size_t>	seqENames;
+			std::vector<size_t>	readsSPos;
+			std::vector<size_t>	readsEPos;
 			
 			if (lastSize)
 			{
@@ -1480,11 +1465,11 @@ void CuCLARK<HKMERr>::getObjectsDataComputeFullGPU(const uint8_t * _map,  const 
 			size_t iNext = i_r+1 < m_numBatches ? m_posReads[i_r+1]: nb;
 			size_t i = m_posReads[i_r], i_l = 0;
 
-			vector<size_t>	readsLength;
-			vector<size_t>	seqSNames;
-			vector<size_t>	seqENames;
-			vector<size_t>	readsSPos;
-			vector<size_t>	readsEPos;
+			std::vector<size_t>	readsLength;
+			std::vector<size_t>	seqSNames;
+			std::vector<size_t>	seqENames;
+			std::vector<size_t>	readsSPos;
+			std::vector<size_t>	readsEPos;
 				
 			if (lastSize)
 			{
@@ -1536,11 +1521,11 @@ void CuCLARK<HKMERr>::getObjectsDataComputeFullGPU(const uint8_t * _map,  const 
 	}
 	else 
 	{ 
-		cerr << "Failed to recognize the format of the file." << endl; exit(-1) ;
+		std::cerr << "Failed to recognize the format of the file." << std::endl; exit(-1) ;
 	}
 	
 	// get index of first read in batch, count the number of all reads
-	vector<ITYPE> indexBatches;
+	std::vector<ITYPE> indexBatches;
 	indexBatches.resize(m_numBatches+1);
 	indexBatches[0] = 0;
 	size_t maxReads = 0;
@@ -1567,7 +1552,7 @@ void CuCLARK<HKMERr>::getObjectsDataComputeFullGPU(const uint8_t * _map,  const 
 		avgReadLength = avgReadLength/m_readsLength[i].size() +1;
 		size_t numContainer = avgReadLength/(sizeof(CONTAINER)*4)+3;
 #ifdef DEBUG_BATCH
-		cerr << "Batch " << i << ": AVG read length " << avgReadLength
+		std::cerr << "Batch " << i << ": AVG read length " << avgReadLength
 			<< ", Estimated # containers per read: " << numContainer << "\n";
 #endif			
 
@@ -1581,7 +1566,7 @@ void CuCLARK<HKMERr>::getObjectsDataComputeFullGPU(const uint8_t * _map,  const 
 		}
 	}
 #ifdef DEBUG_BATCH
-	cerr << "Estimated # containers per read: " << numContainerMax << "\n";
+	std::cerr << "Estimated # containers per read: " << numContainerMax << "\n";
 #endif			
 	
 	// compact results
@@ -1711,7 +1696,7 @@ void CuCLARK<HKMERr>::getObjectsDataComputeFullGPU(const uint8_t * _map,  const 
 			
 			if (containerCount > (uint32_t)-1)
 			{
-				cerr << "ERROR: Batch overflow. Please increase the number of batches (-b <numberofbatches>)." << endl;
+				std::cerr << "ERROR: Batch overflow. Please increase the number of batches (-b <numberofbatches>)." << std::endl;
 				exit(-1);
 			}	
 			
@@ -1719,16 +1704,16 @@ void CuCLARK<HKMERr>::getObjectsDataComputeFullGPU(const uint8_t * _map,  const 
 			
 			float numContainerActual = (float)containerCount/m_readsLength[i_r].size();			
 #ifdef DEBUG_BATCH
-			cerr << "Batch " << i_r << "\t # Containers: " << containerCount
+			std::cerr << "Batch " << i_r << "\t # Containers: " << containerCount
 				 << " (AVG # per read: " << numContainerActual << ").\n";
 #endif			 
 			if (numContainerActual > numContainerMax)
 			{
-				cerr << "Bad container estimation. Abort." << endl;
+				std::cerr << "Bad container estimation. Abort." << std::endl;
 				exit(-1);
 			}		
 #ifdef DEBUG_BATCH
-			cerr 	<< "Host " << omp_get_thread_num()
+			std::cerr	<< "Host " << omp_get_thread_num()
 					<< " Batch " << i_r << "\t CUDA start.\t"
 					<< "Read data size: " << readsInContainers.size()*sizeof(CONTAINER) /1000 /1000.0 << " MB\t"
 					<< "Result data size: " << m_finalResultsRowSize*m_readsLength[i_r].size() /1000 /1000.0 << " MB\n";
@@ -1747,10 +1732,10 @@ void CuCLARK<HKMERr>::getObjectsDataComputeFullGPU(const uint8_t * _map,  const 
 #ifdef DEBUG_BATCH
 				// print batch information
 				size_t batchSize = (m_readsLength[i_r].size()+1)*sizeof(uint32_t) + containerCount*sizeof(CONTAINER);
-				cerr << "Batch " << i_r << " scheduled." 
+				std::cerr << "Batch " << i_r << " scheduled." 
 						  << " Objects: " << m_readsLength[i_r].size()
 						  << " Size: " << batchSize/1000/1000.0 << " MB"
-						  << endl;
+						  << std::endl;
 #endif
 			}
 					
@@ -1794,81 +1779,67 @@ void CuCLARK<HKMERr>::getObjectsDataComputeFullGPU(const uint8_t * _map,  const 
  * Return true if database is already available.
  */
 template <typename HKMERr>
-bool CuCLARK<HKMERr>::getTargetsData(const char* _filesName, vector<string>& _filesHT, vector<string>& _filesHTC, const bool& _creatingkmfiles, const ITYPE& _samplingfactor)
+bool CuCLARK<HKMERr>::getTargetsData(const char* _filesName, std::vector<std::string>& _filesHT, std::vector<std::string>& _filesHTC, const bool& _creatingkmfiles, const ITYPE& _samplingfactor)
 {
-	FILE * meta_f = fopen(_filesName,"r");
-	if (meta_f == NULL)
+	std::ifstream meta_f(_filesName);
+	if (!meta_f.is_open())
 	{
-		cerr << "Failed to open targets data in file: " << _filesName << endl;
+		std::cerr << "Failed to open targets data in file: " << _filesName << std::endl;
 		exit(-1);
 	}
 
-	string subfile = "";
+	std::string subfile = "";
 	while (getFirstElementInLineFromFile(meta_f, subfile))
 	{
-		FILE * t_f = fopen(subfile.c_str(),"r");
-		if (t_f == NULL)
+		std::ifstream t_f(subfile);
+		if (!t_f.is_open())
 		{
-			cerr << "Failed to open file: " << subfile << " defined in " << _filesName << endl;
+			std::cerr << "Failed to open file: " << subfile << " defined in " << _filesName << std::endl;
 			exit(-1);
 		}
-		fclose(t_f);
+		t_f.close();
 	}
-	fclose(meta_f);	
-	meta_f = fopen(_filesName,"r");
+	meta_f.close();
+	meta_f.open(_filesName);
 
 	bool areHTfilespresent = true;
 	while(getLineFromFile(meta_f, subfile))
 	{
-		vector<string> ele;
+		std::vector<std::string> ele;
 		getElementsFromLine(subfile, 3, ele);
-		pair< string, string > target;
+		std::pair< std::string, std::string > target;
 
 		target.first = ele[0];
 
 		if (ele.size() > 1)
 		{
 			target.second = ele[1];
-			std::vector<string>::iterator it = find (m_labels.begin(), m_labels.end(), ele[1]); 
+			std::vector<std::string>::iterator it = std::find (m_labels.begin(), m_labels.end(), ele[1]); 
 			if ( it  == m_labels.end())
 			{	
 				m_labels.push_back(ele[1]); 
 			}
-			char * fname = (char*) calloc(100, sizeof(char));
-			sprintf(fname, "%s/%s_k%lu.ht", m_folder, ele[1].c_str(), (size_t)m_kmerSize);
-			FILE * fd = fopen(fname, "r");
-			areHTfilespresent =  (fd != NULL) && areHTfilespresent;
-			free(fname);
-			fname = NULL;
-			if (fd != NULL)
-			{
-				fclose(fd);
-			}
+			std::string fname = std::string(m_folder) + "/" + ele[1] + "_k" + std::to_string(m_kmerSize) + ".ht";
+			std::ifstream fd(fname);
+			areHTfilespresent = fd.is_open() && areHTfilespresent;
 		}
 		else
-		{	cerr << " Missing label for " << ele[0] <<  endl; exit(-1); }
+		{	std::cerr << " Missing label for " << ele[0] <<  std::endl; exit(-1); }
 
 		if (ele.size() > 2)
 		{
-			std::vector<string>::iterator it = find (m_labels_c.begin(), m_labels_c.end(), ele[2]);
+			std::vector<std::string>::iterator it = std::find (m_labels_c.begin(), m_labels_c.end(), ele[2]);
 			if ( it  == m_labels_c.end())
 			{       m_labels_c.push_back(ele[2]);} 
 
-			char * fname = (char*) calloc(100, sizeof(char));
-			sprintf(fname, "%s/%s_k%lu.ht", m_folder, ele[2].c_str(), (size_t) m_kmerSize);
-			FILE * fd = fopen(fname, "r");
-			areHTfilespresent =  (fd != NULL) && areHTfilespresent;
-			free(fname);
-			fname = NULL;
-			if (fd != NULL)
-			{
-				fclose(fd);
-			}
+			std::string fname = std::string(m_folder) + "/" + ele[2] + "_k" + std::to_string(m_kmerSize) + ".ht";
+			std::ifstream fd(fname);
+			areHTfilespresent = fd.is_open() && areHTfilespresent;
 
 		}
 		m_targetsID.push_back(target);
 	}
-	fclose(meta_f);
+	meta_f.close();
 	print(_creatingkmfiles, _samplingfactor);
 
 	if (_creatingkmfiles)
@@ -1884,26 +1855,18 @@ bool CuCLARK<HKMERr>::getTargetsData(const char* _filesName, vector<string>& _fi
 	for(size_t t=0 ; t < m_labels_c.size(); t++)
 	{       m_targetsName.push_back(m_labels_c[t]);       }
 
-	char * cfname = (char*) calloc(130, sizeof(char));
-	char * cfname_s = (char*) calloc(130+4, sizeof(char));
+	std::string cfname;
 	getdbName(cfname);
-	sprintf(cfname_s, "%s.sz", cfname);
-	FILE * dbfd_sz = fopen(cfname_s, "r");
-	sprintf(cfname_s, "%s.ky", cfname);
-	FILE * dbfd_ky = fopen(cfname_s, "r");
-	sprintf(cfname_s, "%s.lb", cfname);
-	FILE * dbfd_lbl = fopen(cfname_s, "r");
-	if (dbfd_sz != NULL && dbfd_ky != NULL && dbfd_lbl != NULL)
+	std::string cfname_sz = cfname + ".sz";
+	std::string cfname_ky = cfname + ".ky";
+	std::string cfname_lb = cfname + ".lb";
+	std::ifstream dbfd_sz(cfname_sz);
+	std::ifstream dbfd_ky(cfname_ky);
+	std::ifstream dbfd_lbl(cfname_lb);
+	if (dbfd_sz.is_open() && dbfd_ky.is_open() && dbfd_lbl.is_open())
 	{
 		areHTfilespresent = true;
-		fclose(dbfd_sz);
-		fclose(dbfd_ky);
-		fclose(dbfd_lbl);
 	}
-	free(cfname);
-	free(cfname_s);
-	cfname = NULL;
-	cfname_s = NULL;
 	return areHTfilespresent;
 }
 
@@ -1913,23 +1876,23 @@ bool CuCLARK<HKMERr>::getTargetsData(const char* _filesName, vector<string>& _fi
 template <typename HKMERr>
 void CuCLARK<HKMERr>::print(const bool& _creatingkmfiles, const ITYPE& _samplingfactor) const
 {
-	cerr << "CuCLARK version " << VERSION << " (Copyright 2016 Robin Kobus, rkobus@students.uni-mainz.de)" << endl;
-	cerr << "Based on CLARK version 1.1.3 (UCR CS&E. Copyright 2013-2016 Rachid Ounit, rouni001@cs.ucr.edu) " << endl;
+	std::cerr << "CuCLARK version " << VERSION << " (Copyright 2016 Robin Kobus, rkobus@students.uni-mainz.de)" << std::endl;
+	std::cerr << "Based on CLARK version 1.1.3 (UCR CS&E. Copyright 2013-2016 Rachid Ounit, rouni001@cs.ucr.edu) " << std::endl;
 	if (m_minCountTarget > 0)
 	{
-		cerr << "Minimum k-mers occurences in Targets is set to " << m_minCountTarget << endl;
+		std::cerr << "Minimum k-mers occurences in Targets is set to " << m_minCountTarget << std::endl;
 	}
 	if (_creatingkmfiles)
 	{
-		cerr << "Creation of targets specific k-mers files requested " << endl;
+		std::cerr << "Creation of targets specific k-mers files requested " << std::endl;
 	}
 	if (m_isLightLoading)
 	{
-		cerr << "Using light database in RAM (" << m_iterKmers << ")" << endl;
+		std::cerr << "Using light database in RAM (" << m_iterKmers << ")" << std::endl;
 	}
 	if (_samplingfactor > 2)
 	{
-		cerr << "Sampling factor is " << _samplingfactor << endl;
+		std::cerr << "Sampling factor is " << _samplingfactor << std::endl;
 	}
 }
 
@@ -1940,9 +1903,9 @@ template <typename HKMERr>
 void CuCLARK<HKMERr>::printSpeedStats(const struct timeval& _requestEnd, const struct timeval& _requestStart, const char* _fileResult) const 
 {
 	double diff = (_requestEnd.tv_sec - _requestStart.tv_sec) + (_requestEnd.tv_usec - _requestStart.tv_usec) / 1000000.0;
-	cout <<" - Assignment time: "<<diff<<" s. Speed: ";
-	cout << (size_t) (((double) m_nbObjects)/(diff)*60.0)<<" objects/min. ("<< m_nbObjects<<" objects)."<<endl;
-	cout <<" - Results stored in " << _fileResult << endl;
+	std::cout <<" - Assignment time: "<<diff<<" s. Speed: ";
+	std::cout << (size_t) (((double) m_nbObjects)/(diff)*60.0)<<" objects/min. ("<< m_nbObjects<<" objects)."<<std::endl;
+	std::cout <<" - Results stored in " << _fileResult << std::endl;
 }
 
 /**
@@ -1952,11 +1915,11 @@ void CuCLARK<HKMERr>::printSpeedStats(const struct timeval& _requestEnd, const s
 template <typename HKMERr>
 void CuCLARK<HKMERr>::printExtendedResultsSynced(const uint8_t * _map,  const char* _fileResult)
 {
-	ofstream f_out;
+	std::ofstream f_out;
 	f_out.open(_fileResult, std::ofstream::out );
 
 	// print header
-	string header[] = {"Length", "Gamma","1st_assignment", "score1", "2nd_assignment", "score2", "confidence"};
+	std::string header[] = {"Length", "Gamma","1st_assignment", "score1", "2nd_assignment", "score2", "confidence"};
 	size_t headerSize = 7;
 
 	f_out <<"Object_ID";
@@ -1971,7 +1934,7 @@ void CuCLARK<HKMERr>::printExtendedResultsSynced(const uint8_t * _map,  const ch
 
 	for(size_t t = 0 ; t < headerSize ;  t++)
 	{       f_out << "," << header[t]; }
-	f_out << endl;
+	f_out << std::endl;
 
 	f_out.close();
 	//
@@ -1997,7 +1960,7 @@ void CuCLARK<HKMERr>::printExtendedResultsSynced(const uint8_t * _map,  const ch
 		// wait for first batch
 		while(!m_batchScheduled[i_r]);
 		m_cuClarkDb->waitForBatch(i_r);
-		cerr << "Writing extended results... " << endl;
+		std::cerr << "Writing extended results... " << std::endl;
 		
 		for(size_t t = 0; t < m_nbObjects; t++)
 		{
@@ -2072,10 +2035,10 @@ void CuCLARK<HKMERr>::printExtendedResultsSynced(const uint8_t * _map,  const ch
 			///
 		}
 		fclose(fout);
-		cerr << "Done." << endl;
+		std::cerr << "Done." << std::endl;
 		
 		/// extra target info
-		cerr << "MIN targets: " << nonzero_min
+		std::cerr << "MIN targets: " << nonzero_min
 			 << ", MAX targets: " << nonzero_max
 			 << ", AVG targets: " << (float)nonzero_sum / m_nbObjects
 			 << "\n";
@@ -2094,7 +2057,7 @@ void CuCLARK<HKMERr>::printExtendedResultsSynced(const uint8_t * _map,  const ch
 	// wait for first batch
 	while(!m_batchScheduled[i_r]);
 	m_cuClarkDb->waitForBatch(i_r);
-	cerr << "Writing results... " << endl;
+	std::cerr << "Writing results... " << std::endl;
 	
 	for(size_t t = 0; t < m_nbObjects; t++)
 	{
@@ -2137,5 +2100,5 @@ void CuCLARK<HKMERr>::printExtendedResultsSynced(const uint8_t * _map,  const ch
 				delta);
 	}
 	fclose(fout);
-	cerr << "Done." << endl;	
+	std::cerr << "Done." << std::endl;	
 }

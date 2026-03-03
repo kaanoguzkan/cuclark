@@ -1,4 +1,5 @@
-#!/bin/sh
+#!/bin/bash
+set -euo pipefail
 
 #
 #   cuCLARK, CLARK for CUDA-enabled GPUs.
@@ -18,111 +19,69 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-#   download_data_release.sh: To download genomes of latest RefSeq release from NCBI site 
+#   download_data_release.sh: To download genomes of latest RefSeq release from NCBI site
 #			(for Bacteria, Viruses, etc.).
+
+NCBI_BASE="https://ftp.ncbi.nlm.nih.gov"
 
 if [ $# -ne 2 ]; then
 	echo "Usage: $0 <Directory for the sequences> <RefSeq Database: bacteria, viral, ...> "
+	exit 1
+fi
+
+download_release() {
+	local label="$1"
+	local release_name="$2"
+	local hidden_file="$3"
+	local dir_name="$4"
+
+	if [ ! -s "$hidden_file" ]; then
+		rm -Rf "$dir_name" "${hidden_file}."*
+		mkdir -m 775 "$dir_name"
+		cd "$dir_name"
+		wget -q "${NCBI_BASE}/refseq/release/RELEASE_NUMBER"
+		relnum=$(cat RELEASE_NUMBER)
+		echo "RefSeq release ${relnum} found."
+		echo "Downloading now ${label} genomes:"
+		wget "${NCBI_BASE}/refseq/release/${release_name}/${release_name}.*.genomic.fna.gz"
+
+		if ! ls ${release_name}.*.genomic.fna.gz 1>/dev/null 2>&1; then
+			echo "Error: Failed to download '${release_name}' sequences. Are you sure '${release_name}' database exists in RefSeq?"
+			cd ..
+			rm -rf "${dir_name}"
+			exit 1
+		fi
+
+		echo "Downloading done. Uncompressing files... "
+		gunzip *.gz
+
+		echo "Creating single file for each genome... "
+		# Handle both old gi|...|ref|ACCESSION| and modern accession-only headers
+		sed -i 's/^>\(gi|[0-9]*|ref|\)\([[:graph:]]*\)|/>\2/' ${release_name}.*.genomic.fna 2>/dev/null || true
+		awk '/^>/ {close(file); file=sprintf("%s.fna",substr($1,2,length($1)-1)); print > file; next;} { print >> file; }' ${release_name}.*.genomic.fna
+		rm -f ${release_name}.*.genomic.fna RELEASE_NUMBER
+
+		find "$(pwd)" -name '*.fna' > "../${hidden_file##*/}"
+		cd ..
+		if [ ! -s "${hidden_file##*/}" ]; then
+			echo "Error: Failed to download ${label} sequences. "
+			exit 1
+		fi
+		echo "${label} sequences downloaded!"
+	else
+		echo "${label} sequences already in $1."
+	fi
+}
+
+if [ "$2" = "bacteria" ]; then
+	download_release "Bacteria" "bacteria" "$1/.bacteria" "$1/Bacteria"
 	exit
 fi
 
-if [ "$2" = "bacteria" ]; then
-if [ ! -s $1/.bacteria ]; then
-	rm -Rf $1/Bacteria $1/.bacteria.*
-	mkdir -m 775 $1/Bacteria
-	cd $1/Bacteria/
-	wget ftp://ftp.ncbi.nih.gov/refseq/release/RELEASE_NUMBER
-	relnum=$(cat RELEASE_NUMBER)
-	echo "RefSeq release $relnum found."
-	echo "Downloading now Bacteria genomes:"
-	wget ftp://ftp.ncbi.nih.gov/refseq/release/bacteria/bacteria.*.genomic.fna.gz
-	echo "Downloading done. Uncompressing files... "
-	gunzip *.gz
-	
-	echo "Creating single file for each genome... "
-	sed -i 's/\(gi|[0-9]*|ref|\)\([[:graph:]]*\)|/\2/' bacteria.*.genomic.fna
-	awk '/^>/ {close(file); file=sprintf("%s.fna",substr($1,2,length($1)-1)); print > file; next;} { print >> file; }' bacteria.*.genomic.fna
-	rm -f bacteria.*.genomic.fna
-	
-	find `pwd` -name '*.fna' > ../.bacteria
-	cd ..
-	if  [ ! -s .bacteria ]; then
-		echo "Error: Failed to download bacteria sequences. "
-		exit
-	fi
-	echo "Bacteria sequences downloaded!"
-else
-	echo "Bacteria sequences already in $1."
-fi
-exit
-fi
-
 if [ "$2" = "viruses" ]; then
-if [ ! -s $1/.viruses ]; then
-	rm -Rf $1/Viruses  $1/.viruses.*
-	mkdir -m 775 $1/Viruses
-	cd $1/Viruses/
-	wget ftp://ftp.ncbi.nih.gov/refseq/release/RELEASE_NUMBER
-	relnum=$(cat RELEASE_NUMBER)
-	echo "RefSeq release $relnum found."
-	echo "Downloading now Viruses genomes:"
-	wget ftp://ftp.ncbi.nih.gov/refseq/release/viral/viral.*.genomic.fna.gz
-	echo "Downloading done. Uncompressing files... "
-	gunzip *.gz
-
-	echo "Creating single file for each genome... "
-	sed -i 's/\(gi|[0-9]*|ref|\)\([[:graph:]]*\)|/\2/' viral.*.genomic.fna
-	awk '/^>/ {close(file); file=sprintf("%s.fna",substr($1,2,length($1)-1)); print > file; next;} { print >> file; }' viral.*.genomic.fna
-	rm -f viral.*.genomic.fna
-
-	find `pwd` -name '*.fna'  > ../.viruses
-	cd ..
-	if  [ ! -s .viruses ]; then
-		echo "Error: Failed to download viruses sequences. "
-		exit
-	fi
-	echo "Viruses sequences downloaded!"
-else
-        echo "Viruses sequences already in $1."
+	download_release "Viruses" "viral" "$1/.viruses" "$1/Viruses"
+	exit
 fi
+
+download_release "'$2'" "$2" "$1/.$2" "$1/$2"
 exit
-fi
-
-if [ ! -s $1/.$2 ]; then
-	rm -Rf $1/$2  $1/.$2.*
-	mkdir -m 775 $1/$2
-	cd $1/$2/
-	wget ftp://ftp.ncbi.nih.gov/refseq/release/RELEASE_NUMBER
-	relnum=$(cat RELEASE_NUMBER)
-	echo "RefSeq release $relnum found."
-	echo "Downloading now '$2' genomes:"
-	wget ftp://ftp.ncbi.nih.gov/refseq/release/$2/$2.*.genomic.fna.gz
-
-	if [ ! -e $2.*.genomic.fna.gz ]; then
-		echo "Error: Failed to download '$2' sequences. Are you sure '$2' database exists in RefSeq?"
-		cd ..
-		rm -rf $2/
-		exit
-	fi
-
-	echo "Downloading done. Uncompressing files... "
-	gunzip *.gz
-
-	echo "Creating single file for each genome... "
-	sed -i 's/\(gi|[0-9]*|ref|\)\([[:graph:]]*\)|/\2/' $2.*.genomic.fna
-	awk '/^>/ {close(file); file=sprintf("%s.fna",substr($1,2,length($1)-1)); print > file; next;} { print >> file; }' $2.*.genomic.fna
-	rm -f $2.*.genomic.fna
-
-	find `pwd` -name '*.fna'  > ../.$2
-	cd ..
-	if  [ ! -s .$2 ]; then
-		echo "Error: Failed to download '$2' sequences. "
-		exit
-	fi
-	echo "'$2' sequences downloaded!"
-else
-        echo "'$2' sequences already in $1."
-fi
-exit
-fi
-

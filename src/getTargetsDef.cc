@@ -32,42 +32,41 @@
 #include <vector>
 #include <cstring>
 #include <fstream>
-using namespace std;
 #include "./file.hh"
 
 int main(int argc, char** argv)
 {
 	if (argc < 2)
 	{
-		cerr << "Usage: " << argv[0] << " <FilestoTaxIDs>, option: <Rank: 0,1,2,3,4,5>, 0 for species, 1 for genus, ..., 5 for phylum. Default is species." << endl; 
+		std::cerr << "Usage: " << argv[0] << " <FilestoTaxIDs>, option: <Rank: 0,1,2,3,4,5>, 0 for species, 1 for genus, ..., 5 for phylum. Default is species." << std::endl; 
 		exit(1);
 	}
-	FILE * fd = fopen(argv[1], "r");
-	if (fd == NULL)
+	std::ifstream fd(argv[1]);
+	if (!fd.is_open())
 	{
-		cerr << "Failed to open " << argv[1] << endl;
+		std::cerr << "Failed to open " << argv[1] << std::endl;
 		exit(1);
 	}
 	int r = 1;
 	if (argc > 2)
 	{
-		r = atoi(argv[2]);
+		r = std::stoi(argv[2]);
 		if (r > 5)
 		{
-			cerr << "Failed to recognize the rank. Please type a number between 0 and 5, according to the following:" << endl;
-			cerr << "0: species, 1: genus, 2: family, 3: order, 4:class, and 5: phylum." << endl;
+			std::cerr << "Failed to recognize the rank. Please type a number between 0 and 5, according to the following:" << std::endl;
+			std::cerr << "0: species, 1: genus, 2: family, 3: order, 4:class, and 5: phylum." << std::endl;
 			exit(1);
 		}
 	}
-	string line;
-	vector<string> ele;
-	vector<char> sep;
+	std::string line;
+	std::vector<std::string> ele;
+	std::vector<char> sep;
 	sep.push_back('\t');
 	sep.push_back(',');
 	sep.push_back(' ');
 	size_t inc = 0;
 	size_t nbFilesExcluded = 0;
-	ofstream fout("files_excluded.txt", std::ios::binary);
+	std::ofstream fout("files_excluded.txt", std::ios::binary);
 	while (getLineFromFile(fd, line))
 	{
 		ele.clear();
@@ -76,7 +75,7 @@ int main(int argc, char** argv)
 		{
 			if (ele[2+r] != "UNKNOWN")
 			{
-			cout << ele[0] << "\t" << ele[2+r] << endl;
+			std::cout << ele[0] << "\t" << ele[2+r] << std::endl;
 			}
 		}
 		else
@@ -84,13 +83,13 @@ int main(int argc, char** argv)
 			nbFilesExcluded++;
 			if (nbFilesExcluded == 1)
 			{ 
-				fout << "The following files have been excluded from the targets definition" << endl;
+				fout << "The following files have been excluded from the targets definition" << std::endl;
 			}
 			// Report this file
-			fout << ele[0] << endl;
+			fout << ele[0] << std::endl;
 		}
 	}
-	fclose(fd);
+	fd.close();
 	fout.close();
 	return nbFilesExcluded;
 }

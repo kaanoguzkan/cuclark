@@ -67,7 +67,7 @@ template <typename HKMERr, typename ELMTr>
 class hTable
 {
 	private:
-		std::vector< sVector< htCell<HKMERr,ELMTr> > >   	m_table;
+		std::vector< std::vector< htCell<HKMERr,ELMTr> > >   	m_table;
 		size_t							m_load;
 		size_t							m_it_x;
 		size_t							m_it_y;
@@ -174,7 +174,6 @@ class hTable
 #include <fcntl.h>
 #include <sys/mman.h>
 
-using namespace std;
 
 	template <typename HKMERr, typename ELMTr>
 hTable<HKMERr, ELMTr>::hTable(): m_load(0), m_it_x(0), m_it_y(0), m_k(0)
@@ -211,7 +210,7 @@ void hTable<HKMERr, ELMTr>::sortall(const size_t& _iteratorPos)
 			std::sort(m_table[t].begin()+_iteratorPos, m_table[t].end());
 		}
 	}
-	cerr << "Hashtable sorting done: maximum number of collisions: " << maxSize -_iteratorPos << endl;
+	std::cerr << "Hashtable sorting done: maximum number of collisions: " << maxSize -_iteratorPos << std::endl;
 }
 
 	template <typename HKMERr, typename ELMTr>
@@ -589,16 +588,13 @@ void hTable<HKMERr, ELMTr>::elementIterator(uint64_t& _kmer, ELMTr& _cElement) c
 	template <typename HKMERr, typename ELMTr>
 uint64_t hTable<HKMERr, ELMTr>::write(const char* _fileht, const size_t& _iteratorPos, const bool& _clearAfter)
 {
-	char * file_lbl = (char*) calloc(strlen(_fileht)+4,sizeof(char));
-	char * file_key = (char*) calloc(strlen(_fileht)+4,sizeof(char));
-	char * file_sze = (char*) calloc(strlen(_fileht)+4,sizeof(char));
-	sprintf(file_lbl, "%s.lb", _fileht);
-	sprintf(file_key, "%s.ky", _fileht);
-	sprintf(file_sze, "%s.sz", _fileht);
+	std::string file_lbl = std::string(_fileht) + ".lb";
+	std::string file_key = std::string(_fileht) + ".ky";
+	std::string file_sze = std::string(_fileht) + ".sz";
 
-	FILE * fd_l = fopen(file_lbl,"w+");
-	FILE * fd_k = fopen(file_key,"w+");
-	FILE * fd_s = fopen(file_sze,"w+");
+	FILE * fd_l = fopen(file_lbl.c_str(),"w+");
+	FILE * fd_k = fopen(file_key.c_str(),"w+");
+	FILE * fd_s = fopen(file_sze.c_str(),"w+");
 	uint64_t nbElement = 0;
 	uint8_t size = 0;
 	for(ITYPE t = 0; t < HTSIZE; t++)
@@ -614,11 +610,11 @@ uint64_t hTable<HKMERr, ELMTr>::write(const char* _fileht, const size_t& _iterat
 			}
 			if ( l_size >=  256) 
 			{
-				cerr << "This table can not be stored on disk: Some bucket list size exceeds 255." << endl;
-				cerr << "Please relaunch all computations by applying the following modifications: " << endl;
-				cerr << "- choose a smaller k-mers length, and/or" << endl;
-				cerr << "- increase the size of the hash-table as " << m_table.size() << " is way too small!" << endl;
-				cerr << "The program must exit now." << endl;
+				std::cerr << "This table can not be stored on disk: Some bucket list size exceeds 255." << std::endl;
+				std::cerr << "Please relaunch all computations by applying the following modifications: " << std::endl;
+				std::cerr << "- choose a smaller k-mers length, and/or" << std::endl;
+				std::cerr << "- increase the size of the hash-table as " << m_table.size() << " is way too small!" << std::endl;
+				std::cerr << "The program must exit now." << std::endl;
 				exit(-1);
 			}
 			nbElement += l_size;
@@ -648,12 +644,6 @@ uint64_t hTable<HKMERr, ELMTr>::write(const char* _fileht, const size_t& _iterat
 	fclose(fd_l);
 	fclose(fd_k);
 	fclose(fd_s);
-	free(file_lbl); 
-	file_lbl=NULL;
-	free(file_key); 
-	file_key=NULL;
-	free(file_sze); 
-	file_sze=NULL;
 	if (_clearAfter)
 	{       
 		m_table.clear();
@@ -664,13 +654,9 @@ uint64_t hTable<HKMERr, ELMTr>::write(const char* _fileht, const size_t& _iterat
 	template <typename HKMERr, typename ELMTr>
 bool hTable<HKMERr, ELMTr>::read(const char * _filename, size_t& _fileSize,  const size_t& _nbCPU, const ITYPE& _modCollision, const bool& _isfastLoadingRequested)
 {
-	char * file_lbl = (char*) calloc(strlen(_filename)+4,sizeof(char));
-	char * file_key = (char*) calloc(strlen(_filename)+4,sizeof(char));
-	char * file_sze = (char*) calloc(strlen(_filename)+4,sizeof(char));
-
-	sprintf(file_lbl, "%s.lb", _filename);
-	sprintf(file_key, "%s.ky", _filename);
-	sprintf(file_sze, "%s.sz", _filename);
+	std::string file_lbl = std::string(_filename) + ".lb";
+	std::string file_key = std::string(_filename) + ".ky";
+	std::string file_sze = std::string(_filename) + ".sz";
 
 	if (_isfastLoadingRequested)
 	{
@@ -680,10 +666,10 @@ bool hTable<HKMERr, ELMTr>::read(const char * _filename, size_t& _fileSize,  con
 
 		// Opening File with sizes
 		_fileSize = HTSIZE;
-		int fd_s = open(file_sze, O_RDONLY);
+		int fd_s = open(file_sze.c_str(), O_RDONLY);
 		if (fd_s == -1)
 		{
-			cerr << "Failed to open " << file_sze << endl;
+			std::cerr << "Failed to open " << file_sze << std::endl;
 			return false;
 		}
 		uint8_t *map;
@@ -691,13 +677,13 @@ bool hTable<HKMERr, ELMTr>::read(const char * _filename, size_t& _fileSize,  con
 		if (map == MAP_FAILED)
 		{
 			close(fd_s);
-			cerr << "Failed to mmapping the file!" << endl;
+			std::cerr << "Failed to mmapping the file!" << std::endl;
 			exit(-1);
 		}
 		if (_fileSize < 1)
 		{
 			close(fd_s);
-			cerr << "Failed to load database: the database ["<< file_sze<< "] contains no data." << endl;
+			std::cerr << "Failed to load database: the database ["<< file_sze<< "] contains no data." << std::endl;
 			exit(-1);
 		}
 		// Initialization
@@ -705,11 +691,11 @@ bool hTable<HKMERr, ELMTr>::read(const char * _filename, size_t& _fileSize,  con
 		bool allCollision = _modCollision <= 1;
 		
 		uint64_t 		nbElement = 0;
-		vector<uint8_t>		choice(HTSIZE,0);
-		vector<uint64_t> 	it_Key(_nbCPU,0);
+		std::vector<uint8_t>		choice(HTSIZE,0);
+		std::vector<uint64_t> 	it_Key(_nbCPU,0);
 
 		ITYPE i = 0;
-		vector<ITYPE> Pos(_nbCPU+1, 0);
+		std::vector<ITYPE> Pos(_nbCPU+1, 0);
 		for(i = 1; i < _nbCPU ; i++)
 		{       Pos[i] = (HTSIZE/_nbCPU) * i;   }
 		Pos[_nbCPU] = HTSIZE;
@@ -745,10 +731,10 @@ bool hTable<HKMERr, ELMTr>::read(const char * _filename, size_t& _fileSize,  con
 		size_t _fileSizek = nbElement * sizeof(HKMERr);
 		size_t _fileSizel = nbElement * sizeof(ILBL);
 		// kmers keys
-		int fd_k = open(file_key, O_RDONLY);
+		int fd_k = open(file_key.c_str(), O_RDONLY);
 		if (fd_k == -1)
 		{
-			cerr << "Failed to open " << file_key << endl;
+			std::cerr << "Failed to open " << file_key << std::endl;
 			return false;
 		}
 		HKMERr *key;
@@ -756,20 +742,20 @@ bool hTable<HKMERr, ELMTr>::read(const char * _filename, size_t& _fileSize,  con
 		if (key == MAP_FAILED)
 		{
 			close(fd_k);
-			cerr << "Failed to mmapping the file!" << endl;
+			std::cerr << "Failed to mmapping the file!" << std::endl;
 			exit(-1);
 		}
 		if ( _fileSizek < 1)
 		{
 			close(fd_k);
-			cerr << "Failed to load database: ["<< file_key<< "] contains no data." << endl;
+			std::cerr << "Failed to load database: ["<< file_key<< "] contains no data." << std::endl;
 			exit(-1);
 		}
 		/// targets Labels
-		int fd_l = open(file_lbl, O_RDONLY);
+		int fd_l = open(file_lbl.c_str(), O_RDONLY);
 		if (fd_l == -1)
 		{
-			cerr << "Failed to open " << file_lbl << endl;
+			std::cerr << "Failed to open " << file_lbl << std::endl;
 			return false;
 		}
 		ILBL *lbl;
@@ -777,13 +763,13 @@ bool hTable<HKMERr, ELMTr>::read(const char * _filename, size_t& _fileSize,  con
 		if (lbl == MAP_FAILED)
 		{
 			close(fd_l);
-			cerr << "Failed to mmapping the file!" << endl;
+			std::cerr << "Failed to mmapping the file!" << std::endl;
 			exit(-1);
 		}
 		if ( _fileSizel < 1)
 		{
 			close(fd_l);
-			cerr << "Failed to load database: ["<< file_lbl<< "] contains no data." << endl;
+			std::cerr << "Failed to load database: ["<< file_lbl<< "] contains no data." << std::endl;
 			exit(-1);
 		}
 		/// Loading in memory key-label for each k-mer
@@ -832,27 +818,20 @@ bool hTable<HKMERr, ELMTr>::read(const char * _filename, size_t& _fileSize,  con
 
 		_fileSize = HTSIZE + _fileSizek + _fileSizel;
 
-		free(file_lbl); 
-		file_lbl=NULL;
-		free(file_key); 
-		file_key=NULL;
-		free(file_sze); 
-		file_sze=NULL;
-
 		return true;
 	}
-	FILE * fd_l = fopen(file_lbl,"r");
-	FILE * fd_k = fopen(file_key,"r");
-	FILE * fd_s = fopen(file_sze,"r");
+	FILE * fd_l = fopen(file_lbl.c_str(),"r");
+	FILE * fd_k = fopen(file_key.c_str(),"r");
+	FILE * fd_s = fopen(file_sze.c_str(),"r");
 
 #define LEN 100000
 	
-	if (fd_l == NULL)
-	{	cerr << "Failed to open " << file_lbl << endl; return false;	}
-	if (fd_k == NULL)
-	{       cerr << "Failed to open " << file_key << endl; return false;   }
-	if (fd_s == NULL)
-	{       cerr << "Failed to open " << file_sze << endl; return false;   }
+	if (fd_l == nullptr)
+	{	std::cerr << "Failed to open " << file_lbl << std::endl; return false;	}
+	if (fd_k == nullptr)
+	{       std::cerr << "Failed to open " << file_key << std::endl; return false;   }
+	if (fd_s == nullptr)
+	{       std::cerr << "Failed to open " << file_sze << std::endl; return false;   }
 
 
 	ITYPE t = 0, i	= 0;
@@ -934,13 +913,6 @@ bool hTable<HKMERr, ELMTr>::read(const char * _filename, size_t& _fileSize,  con
 	fclose(fd_k);
 	fclose(fd_s);
 
-	free(file_lbl); 
-	file_lbl=NULL;
-	free(file_key); 
-	file_key=NULL;
-	free(file_sze); 
-	file_sze=NULL;
-
-	return true;	
+	return true;
 }
 

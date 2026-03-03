@@ -30,7 +30,6 @@
 #include <vector>
 #include <iostream>
 #include <cstdlib>
-using namespace std;
 
 #include "kmersConversion.hh"
 #include "dataType.hh"
@@ -60,7 +59,7 @@ void getKmers(const std::string& c, uint64_t& _km_f, uint8_t k)
 			case 'G': case 'g':_km_f ^= 1; break;
 			case 'T': case 't':_km_f ^= 0; break;
 			default:
-					   cerr << "Failed to compute k-mer value of " << c << endl;
+					   std::cerr << "Failed to compute k-mer value of " << c << std::endl;
 					   std::exit(1);
 					   break;
 		}
@@ -93,7 +92,7 @@ void IndexTovector(const uint64_t& _index, const size_t& _kmerSize, std::string&
 	{
 		max *= 4;
 	}
-	vector<char> subKmer;
+	std::vector<char> subKmer;
 	while (max > 0)
 	{
 		if (num >= max)
@@ -121,7 +120,7 @@ void IndexTovector(const uint64_t& _index, const size_t& _kmerSize, std::string&
 		max = max / 4;
 	}
 	//Copy and reversing char order
-	string k = "";
+	std::string k = "";
 	for(size_t t = 0 ; t < subKmer.size() ; t++)
 	{
 		//k.push_back(subKmer[subKmer.size() - 1 - t]);

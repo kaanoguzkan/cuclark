@@ -34,7 +34,6 @@
 #include <map>
 #include <cstdint>
 #include "./file.hh"
-using namespace std;
 
 #define NBNODE 6
 struct node
@@ -44,7 +43,7 @@ struct node
 	node():parent(0),rank(255) {}
 };
 
-void getSGFOCP(const vector<node>& _nodes, const uint32_t& _taxid, vector<node>& _line)
+void getSGFOCP(const std::vector<node>& _nodes, const uint32_t& _taxid, std::vector<node>& _line)
 {
 	_line.clear();
 	_line.resize(NBNODE);
@@ -69,19 +68,19 @@ int main(int argc, char** argv)
 {
 	if (argc != 3)
 	{
-		cerr << "Usage: " << argv[0] << " <./nodes.dmp> <./file_taxid>"<< endl;
+		std::cerr << "Usage: " << argv[0] << " <./nodes.dmp> <./file_taxid>"<< std::endl;
 		exit(-1);
 	}
-	FILE * fdn = fopen(argv[1], "r");
-	if (fdn == NULL)
+	std::ifstream fdn(argv[1]);
+	if (!fdn.is_open())
 	{
-		cerr << "Failed to open " << argv[1] << endl;
+		std::cerr << "Failed to open " << argv[1] << std::endl;
 		exit(-1);
 	}
-	FILE * fdt = fopen(argv[2], "r");
-        if (fdt == NULL)
+	std::ifstream fdt(argv[2]);
+        if (!fdt.is_open())
         {
-                cerr << "Failed to open " << argv[2] << endl;
+                std::cerr << "Failed to open " << argv[2] << std::endl;
                 exit(-1);
         }
 	std::map<std::string,uint8_t> nameTorank;
@@ -95,36 +94,36 @@ int main(int argc, char** argv)
 	nameTorank["phylum"] = 5;
 
 #define MAXNB 20000000
-	vector<node> nodes(MAXNB);
-	string line;
-	vector<string> ele;
-	vector<char> sep;
+	std::vector<node> nodes(MAXNB);
+	std::string line;
+	std::vector<std::string> ele;
+	std::vector<char> sep;
 	sep.push_back(' ');
 	sep.push_back('|');
 	sep.push_back('\t');
-	cerr << "Loading nodes of taxonomy tree... " ;
+	std::cerr << "Loading nodes of taxonomy tree... " ;
 	int id, idp;
 	while (getLineFromFile(fdn, line))
 	{
 		ele.clear();
 		getElementsFromLine(line, sep, ele);
-		id = atoi(ele[0].c_str());
-		idp = atoi(ele[1].c_str());
+		id = std::stoi(ele[0]);
+		idp = std::stoi(ele[1]);
 		nodes[id].parent = idp;
 		it = nameTorank.find(ele[2].c_str());
 		if (it != nameTorank.end() && (ele.size()==3 || ele[3].find("group") == std::string::npos))
 		{	nodes[id].rank = it->second; }
 	}
-	fclose(fdn);
-	cerr << "done." << endl;
-	vector<node> lineage;
-	cerr << "Retrieving lineage for each sequence... " ;
+	fdn.close();
+	std::cerr << "done." << std::endl;
+	std::vector<node> lineage;
+	std::cerr << "Retrieving lineage for each sequence... " ;
 	while (getLineFromFile(fdt, line))
 	{
 		ele.clear();
 		getElementsFromLine(line, sep, ele);
-		id = atoi(ele[2].c_str());
-		cout << ele[0] << "\t" << id;
+		id = std::stoi(ele[2]);
+		std::cout << ele[0] << "\t" << id;
 		if (id > 0)
 		{	
 			getSGFOCP(nodes, id, lineage);	
@@ -132,23 +131,23 @@ int main(int argc, char** argv)
 			{
 				if (lineage[t].rank == 0)
 				{
-					cout << "\t" << lineage[t].parent;
+					std::cout << "\t" << lineage[t].parent;
 				}
 				else
 				{
-					cout << "\tUNKNOWN";
+					std::cout << "\tUNKNOWN";
 				}
 			}
-			cout << endl;
+			std::cout << std::endl;
 			continue;
 		}
 		for(size_t t = 0; t < NBNODE; t++)
-		{	cout << "\tUNKNOWN" ;
+		{	std::cout << "\tUNKNOWN" ;
 		}
-		cout << endl;
+		std::cout << std::endl;
 	}
-	fclose(fdt);
-	cerr << "done." << endl;
+	fdt.close();
+	std::cerr << "done." << std::endl;
 	return 0;
 }
 

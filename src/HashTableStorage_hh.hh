@@ -151,7 +151,7 @@ class EHashtable: public Hashtable
 			) 
 		{	return m_hTable.read(_filename, _sizefile, _nbCPU, _modCollision, _mmapLoading); 	}
 
-		void Load(const string& 				_fileHT, 
+		void Load(const std::string& 				_fileHT,
 			const std::string& 				_label, 
 			const ITYPE& 					_minCount = 0
 			);
@@ -169,9 +169,8 @@ class EHashtable: public Hashtable
 #include "file.hh"
 #include "kmersConversion.hh"
 #define __STDC_FORMAT_MACROS
-#include <inttypes.h>
-
-using namespace std;
+#include <cinttypes>
+#include <fstream>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 Hashtable::Hashtable(): m_kmerSize(0), m_localIndex(0)
@@ -197,10 +196,10 @@ bool EHashtable<HKMERr, ELMTr>::iskmerLengthValid() const
 	double beta = log(((double)HTSIZE))/log(4.0);
 	if ( sizeof(HKMERr)*4*1 + beta < m_kmerSize )
 	{
-		cerr << "The k-mer length (" << m_kmerSize  << ") requested is too big against hash-table settings." << endl;
-		cerr << "Please choose a k-mer length smaller than "<< (size_t) (( sizeof(HKMERr)*4*1*1.0 + beta ));
-		cerr << " or increase the value of HTSIZE and/or change the type of the Cell key (files dataType.hh, parameters.hh)." << endl;
-		cerr << "The program must exit now." << endl;
+		std::cerr << "The k-mer length (" << m_kmerSize  << ") requested is too big against hash-table settings." << std::endl;
+		std::cerr << "Please choose a k-mer length smaller than "<< (size_t) (( sizeof(HKMERr)*4*1*1.0 + beta ));
+		std::cerr << " or increase the value of HTSIZE and/or change the type of the Cell key (files dataType.hh, parameters.hh)." << std::endl;
+		std::cerr << "The program must exit now." << std::endl;
 		return false;
 	}
 	return true;
@@ -245,10 +244,10 @@ bool EHashtable<HKMERr, ELMTr>::RemoveCommon(const std::vector<std::string>& _la
 	ELMTr e;
 	uint64_t nbElement = 0;
 	uint64_t nbSpec = 0;
-	string Lbl, centro, candidate, c_label;
+	std::string Lbl, centro, candidate, c_label;
 	ILBL i_lbl = 0;
 	bool found = false;
-	std::map<string,ILBL>::iterator it_Lbl;
+	std::map<std::string,ILBL>::iterator it_Lbl;
 	const bool centromereRequested = _labels_c.size() > 0 ;
 	while (m_hTable.next())
 	{
@@ -283,11 +282,11 @@ bool EHashtable<HKMERr, ELMTr>::RemoveCommon(const std::vector<std::string>& _la
 		}
 	}
 
-	cerr <<"Removal of common k-mers done: "<<nbElement+nbSpec<<" specific "<< m_kmerSize<<"-mers found";
+	std::cerr <<"Removal of common k-mers done: "<<nbElement+nbSpec<<" specific "<< m_kmerSize<<"-mers found";
 	if (centromereRequested)
-	{	cerr << " including "<<nbSpec<<" in centromeres."<<endl;	}
+	{	std::cerr << " including "<<nbSpec<<" in centromeres."<<std::endl;	}
 	else 
-	{	cerr << "." << endl;	}
+	{	std::cerr << "." << std::endl;	}
 	return true;
 }
 
@@ -299,8 +298,8 @@ bool EHashtable<HKMERr, ELMTr>::SaveMultiple(const std::vector<std::string>& _fi
 	{
 		return false;
 	}
-	vector<FILE*> fds(_filesHT.size());
-	std::map<string, size_t> stringToIndex;
+	std::vector<FILE*> fds(_filesHT.size());
+	std::map<std::string, size_t> stringToIndex;
 
 	for(size_t t = 0; t < _filesHT.size() ; t++)
 	{
@@ -311,7 +310,7 @@ bool EHashtable<HKMERr, ELMTr>::SaveMultiple(const std::vector<std::string>& _fi
 		stringToIndex[ _labels[t]] = t;
 	}
 	m_hTable.resetIterator();
-	string kmer;
+	std::string kmer;
 	while (m_hTable.next())
 	{
 		ELMTr e;
@@ -347,13 +346,13 @@ bool EHashtable<HKMERr, ELMTr>::SaveIntersectionMultiple(const std::vector<std::
 		return false;
 	}
 
-	vector<FILE*> fds(_filesHT.size());
+	std::vector<FILE*> fds(_filesHT.size());
 	for(size_t t = 0; t < _filesHT.size() ; t++)
 	{
 		// Writing/Saving data in file
 		fds[t] = fopen(_filesHT[t].c_str(), "w+");
-		string name= _labels[t];
-		string	centro = name.substr(0, name.size()-1);
+		std::string name= _labels[t];
+		std::string	centro = name.substr(0, name.size()-1);
 		fprintf(fds[t], "#K-mers specific to chromosome-centromere %s\n", centro.c_str());
 		fprintf(fds[t], "#IKMER ICOUNT %lu-MER\n#\n", kmerSize);
 	}
@@ -361,7 +360,7 @@ bool EHashtable<HKMERr, ELMTr>::SaveIntersectionMultiple(const std::vector<std::
 	ELMTr e;
 	uint64_t kmerIndex;
 	m_hTable.resetIterator();
-	string kmer;
+	std::string kmer;
 	while (m_hTable.next())
 	{
 		m_hTable.elementIterator(kmerIndex, e);
@@ -372,8 +371,8 @@ bool EHashtable<HKMERr, ELMTr>::SaveIntersectionMultiple(const std::vector<std::
 		{
 			if ( e.GetMultiplicity() == 2 )
 			{
-				string label = _labels[i_lbl];
-				string Lbl = m_Labels[e.GetLabel()];
+				std::string label = _labels[i_lbl];
+				std::string Lbl = m_Labels[e.GetLabel()];
 				bool sameChr = Lbl.size() == label.size();
 				for(size_t t = 0 ; sameChr && t < Lbl.size() - 1 ; t++ )
 				{       sameChr = sameChr && Lbl[t] == label[t];}
@@ -425,7 +424,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const std::string&   _kmer)
 }
 
 	template <typename HKMERr, typename ELMTr>
-bool EHashtable<HKMERr, ELMTr>::addElement(const std::string& _kmer, const string& _label)
+bool EHashtable<HKMERr, ELMTr>::addElement(const std::string& _kmer, const std::string& _label)
 {
 	return addElement(_kmer,  _label, 1);
 }
@@ -439,7 +438,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const uint64_t& _kmerF, const std::st
 	ILBL e_l = 0;
 	IOCCR mult;
 	ICount count;
-	string Lbl;
+	std::string Lbl;
 	bool upLbl, isSameLbl;
 	if (m_hTable.find(_kmerF, e_x, e_y, e_l, mult, count))
 	{
@@ -473,7 +472,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const uint64_t& _kmerF, const std::st
 	}
 
 	// Element is not in the table already. Then adding now.
-	std::map<string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
+	std::map<std::string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
 	m_hTable.insert(_kmerF, it_Lbl->second, _count);
 	m_localIndex++;
 	return true;
@@ -501,7 +500,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const uint64_t& _kmerF, const std::st
 	ILBL e_l = 0;
 	IOCCR mult;
 	ICount count;
-	string Lbl;
+	std::string Lbl;
 	bool upLbl, isSameLbl;
 	
 	if (m_hTable.find(_kmerC, e_x, e_y, e_l, mult, count))
@@ -516,7 +515,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const uint64_t& _kmerF, const std::st
 	}
 
 	// Element is not in the table already. Then adding now.
-	std::map<string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
+	std::map<std::string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
 	m_hTable.insert(_kmerC, it_Lbl->second, _count);
 	m_localIndex++;
 	return true;
@@ -531,7 +530,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const uint64_t& _kmerF, const uint64_
 	ILBL e_l = 0;
 	IOCCR mult;
 	ICount count;
-	string Lbl;
+	std::string Lbl;
 	bool upLbl, isSameLbl;
 	if (m_hTable.find(_kmerF, e_x, e_y, e_l, mult, count))
 	{
@@ -556,7 +555,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const uint64_t& _kmerF, const uint64_
 	}
 
 	// Element is not in the table already. Then adding now.
-	std::map<string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
+	std::map<std::string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
 	m_hTable.insert(_kmerF, it_Lbl->second, _count);
 	m_localIndex++;
 	return true;
@@ -575,7 +574,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const uint64_t& _kmerF, const uint64_
 	ILBL e_l = 0;
 	IOCCR mult;
 	ICount count;
-	string Lbl;
+	std::string Lbl;
 	bool upLbl, isSameLbl;
 	if (m_hTable.find(_kmerC, e_x, e_y, e_l, mult, count))
 	{
@@ -589,7 +588,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const uint64_t& _kmerF, const uint64_
 	}
 
 	// Element is not in the table already. Then adding now.
-	std::map<string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
+	std::map<std::string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
 	m_hTable.insert(_kmerC, it_Lbl->second, _count);
 	m_localIndex++;
 	return true;
@@ -599,7 +598,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const uint64_t& _kmerF, const uint64_
 	template <typename HKMERr, typename ELMTr>
 bool EHashtable<HKMERr, ELMTr>::addElement(const std::string& _kmerI, const std::string& _label, const size_t& _count)
 {
-	string _kmer;
+	std::string _kmer;
 	_kmer = _kmerI;
 
 	// Checking the forward first
@@ -612,7 +611,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const std::string& _kmerI, const std:
 
 	if (m_hTable.find(kmerIndex, e_x, e_y, e_l, mult, count))
 	{
-		string Lbl = m_Labels[e_l];
+		std::string Lbl = m_Labels[e_l];
 		bool upLbl = _label[0] == Lbl[0] && Lbl.size() == _label.size() ;
 		for(size_t t = 1 ; upLbl && t < Lbl.size() - 1; t++)
 		{	upLbl = upLbl && _label[t] == Lbl[t];}
@@ -626,7 +625,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const std::string& _kmerI, const std:
 
 	if (m_hTable.find(rev_kmerIndex, e_x, e_y, e_l, mult, count))
 	{
-		string Lbl = m_Labels[e_l];
+		std::string Lbl = m_Labels[e_l];
 		bool upLbl = _label[0] == Lbl[0] && Lbl.size() == _label.size();
 		for(size_t t = 1 ; upLbl && t < Lbl.size() - 1 ; t++)
 		{	upLbl = upLbl && _label[t] == Lbl[t];}
@@ -637,7 +636,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const std::string& _kmerI, const std:
 	}
 
 	// Element is not in the table already. Then adding now.
-	std::map<string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
+	std::map<std::string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
 	m_hTable.insert(kmerIndex, it_Lbl->second, _count);
 	m_localIndex++;
 
@@ -648,7 +647,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const std::string& _kmerI, const std:
 	template <typename HKMERr, typename ELMTr>
 bool EHashtable<HKMERr, ELMTr>::addElement(const std::string& _kmerI, const std::string& _label, const size_t& _count)
 {
-	string _kmer;
+	std::string _kmer;
 	_kmer = _kmerI;
 
 	uint64_t kmerIndex = 0;
@@ -667,7 +666,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const std::string& _kmerI, const std:
 	// Checking
 	if (m_hTable.find(_kmerC, e_x, e_y, e_l, mult, count))
 	{
-		string Lbl = m_Labels[e_l];
+		std::string Lbl = m_Labels[e_l];
 		bool upLbl = _label[0] == Lbl[0] && Lbl.size() == _label.size() ;
 		for(size_t t = 1 ; upLbl && t < Lbl.size() - 1; t++)
 		{	upLbl = upLbl && _label[t] == Lbl[t];}
@@ -677,7 +676,7 @@ bool EHashtable<HKMERr, ELMTr>::addElement(const std::string& _kmerI, const std:
 	}
 
 	// Element is not in the table already. Then adding now.
-	std::map<string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
+	std::map<std::string,ILBL>::iterator it_Lbl = m_mapLbls.find(_label);
 	m_hTable.insert(_kmerC, it_Lbl->second, _count);
 	m_localIndex++;
 
@@ -695,16 +694,16 @@ bool EHashtable<HKMERr, ELMTr>::queryElement(const IKMER& _ikmer, ILBL& _iLabel)
 }
 
 	template <typename HKMERr, typename ELMTr>
-void EHashtable<HKMERr, ELMTr>::Load(const string& _fileHT, const std::string& _label, const ITYPE& _minCount)
+void EHashtable<HKMERr, ELMTr>::Load(const std::string& _fileHT, const std::string& _label, const ITYPE& _minCount)
 {
-	FILE * fd = fopen(_fileHT.c_str(), "r");
+	std::ifstream fd(_fileHT);
 
-	if (fd == NULL)
+	if (!fd.is_open())
 	{
-		cerr << "Failed to open " << _fileHT << endl;
+		std::cerr << "Failed to open " << _fileHT << std::endl;
 		return;
 	}
-	string line;
+	std::string line;
 
 	// Get vector size
 	getFirstElementInLineFromFile(fd, line);
@@ -714,7 +713,7 @@ void EHashtable<HKMERr, ELMTr>::Load(const string& _fileHT, const std::string& _
 
 	// Get kmer size
 	getFirstElementInLineFromFile(fd, line);
-	size_t kSize(atol(line.c_str()));
+	size_t kSize(std::stol(line));
 	m_kmerSize = kSize;
 
 	if (!iskmerLengthValid())
@@ -723,7 +722,7 @@ void EHashtable<HKMERr, ELMTr>::Load(const string& _fileHT, const std::string& _
 	ITYPE count = 0;
 	uint64_t kIndex = 0;
 	// Populate kmers vector and map
-	std::map< string, ILBL >::iterator it_Lbl;
+	std::map< std::string, ILBL >::iterator it_Lbl;
 	it_Lbl = m_mapLbls.find(_label);
 	while ( getFirstAndSecondElementInLine(fd, kIndex, count) )
 	{
@@ -733,6 +732,5 @@ void EHashtable<HKMERr, ELMTr>::Load(const string& _fileHT, const std::string& _
 			m_localIndex++;
 		}
 	}
-	fclose(fd);
 }
 

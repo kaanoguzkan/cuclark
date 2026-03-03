@@ -1,8 +1,9 @@
-#!/bin/sh
+#!/bin/bash
+set -euo pipefail
 
-# 
+#
 #   CLARK, CLAssifier based on Reduced K-mers.
-# 
+#
 #
 #   This program is free software: you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -18,35 +19,29 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 #   Copyright 2013-2016, Rachid Ounit <rouni001@cs.ucr.edu>
-#   download_taxondata.sh: To download taxonomy tree data from NCBI site. 
+#   download_taxondata.sh: To download taxonomy tree data from NCBI site.
 #
 
+NCBI_BASE="https://ftp.ncbi.nlm.nih.gov"
+
 if [ $# -ne 1 ]; then
-
-echo "Usage: $0 <Directory: directory to store taxonomy data> "
-echo "Note: if the chosen directory is not empty, then its content will be erased."
-exit
-
+	echo "Usage: $0 <Directory: directory to store taxonomy data> "
+	echo "Note: if the chosen directory is not empty, then its content will be erased."
+	exit 1
 fi
 
-rm -Rf $1
-mkdir -m 775 $1
+rm -Rf "$1"
+mkdir -m 775 "$1"
 
-cd $1
-
-# Download taxonomy tree info (GI <-> TaxID, and TaxID: info)
-# Download taxonomy tree info (AccessionID <-> TaxID, and TaxID: nodes, merged, names)
+cd "$1"
 
 echo "Downloading... "
-wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/nucl_gb.accession2taxid.gz
-wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/nucl_wgs.accession2taxid.gz
+wget "${NCBI_BASE}/pub/taxonomy/accession2taxid/nucl_gb.accession2taxid.gz"
+wget "${NCBI_BASE}/pub/taxonomy/accession2taxid/nucl_wgs.accession2taxid.gz"
+wget "${NCBI_BASE}/pub/taxonomy/taxdump.tar.gz"
 
-wget ftp://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz
-
-# Extrat downloaded data
 if [ -s nucl_gb.accession2taxid.gz ] && [ -s taxdump.tar.gz ] && [ -s nucl_wgs.accession2taxid.gz ] ; then
 	echo "Uncompressing files... "
-	#gunzip gi_taxid_nucl.dmp.gz
 	gunzip nucl_wgs.accession2taxid.gz
 	gunzip nucl_gb.accession2taxid.gz
 	tar -zxf taxdump.tar.gz
@@ -57,9 +52,9 @@ if [ -s nucl_gb.accession2taxid.gz ] && [ -s taxdump.tar.gz ] && [ -s nucl_wgs.a
 		exit
 	else
 		echo "Failed to uncompress taxonomy data."
+		exit 1
 	fi
 else
 	echo "Failed to download taxonomy data!"
-	exit
+	exit 1
 fi
-

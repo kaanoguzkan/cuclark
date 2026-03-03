@@ -1,8 +1,9 @@
-#!/bin/sh
+#!/bin/bash
+set -euo pipefail
 
-# 
+#
 #   CLARK, CLAssifier based on Reduced K-mers.
-# 
+#
 #
 #   This program is free software: you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -18,27 +19,22 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 #   Copyright 2013-2016, Rachid Ounit <rouni001@cs.ucr.edu>
-#   updateTaxonomy.sh: To download latest files of taxonomy tree data from NCBI site. 
+#   updateTaxonomy.sh: To download latest files of taxonomy tree data from NCBI site.
 #
 
+NCBI_BASE="https://ftp.ncbi.nlm.nih.gov"
 
-for DIR in `cat ./.DBDirectory`
+for DIR in $(cat ./.DBDirectory)
 do
-cd $DIR/taxonomy/
-
-# Download taxonomy tree info (GI <-> TaxID, and TaxID: info)
-# Download taxonomy tree info (AccessionID <-> TaxID, and TaxID: nodes, merged, names)
+cd "$DIR/taxonomy/"
 
 echo "Downloading... "
-wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/nucl_gb.accession2taxid.gz
-wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/nucl_wgs.accession2taxid.gz
+wget "${NCBI_BASE}/pub/taxonomy/accession2taxid/nucl_gb.accession2taxid.gz"
+wget "${NCBI_BASE}/pub/taxonomy/accession2taxid/nucl_wgs.accession2taxid.gz"
+wget "${NCBI_BASE}/pub/taxonomy/taxdump.tar.gz"
 
-wget ftp://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz
-
-# Extrat downloaded data
 if [ -s nucl_gb.accession2taxid.gz ] && [ -s taxdump.tar.gz ] && [ -s nucl_wgs.accession2taxid.gz ] ; then
         echo "Uncompressing files... "
-        #gunzip gi_taxid_nucl.dmp.gz
         gunzip nucl_wgs.accession2taxid.gz
         gunzip nucl_gb.accession2taxid.gz
         tar -zxf taxdump.tar.gz
@@ -46,13 +42,12 @@ if [ -s nucl_gb.accession2taxid.gz ] && [ -s taxdump.tar.gz ] && [ -s nucl_wgs.a
                 cat nucl_gb.accession2taxid > ./nucl_accss
                 cat nucl_wgs.accession2taxid >> ./nucl_accss
                 touch ../.taxondata
-                exit
         else
                 echo "Failed to uncompress taxonomy data."
         fi
 else
         echo "Failed to download taxonomy data!"
-        exit
+        exit 1
 fi
 
 done

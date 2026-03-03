@@ -26,6 +26,7 @@ FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
         gawk \
+        gzip \
         coreutils \
         ca-certificates \
         libgomp1 \
