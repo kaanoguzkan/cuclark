@@ -1,0 +1,45 @@
+# ── Build output ──────────────────────────────────────────────────────────────
+build/
+exe/
+bin/
+
+# ── Downloaded genome files ───────────────────────────────────────────────────
+data/genomes/
+data/viral_mwe/genomes/
+data/viral_mwe/assembly_summary.txt
+data/viral_mwe/selected_genomes.tsv
+
+# ── Database files (large, generated) ────────────────────────────────────────
+data/db/
+data/viral_mwe/db/
+*.ky
+*.lb
+*.sz
+*.ht
+
+# ── Results and reads (generated) ────────────────────────────────────────────
+data/reads.fa
+data/results.csv
+data/targets.txt
+data/viral_mwe/reads.fa
+data/viral_mwe/results.csv
+data/viral_mwe/targets.txt
+
+# ── NCBI metadata ─────────────────────────────────────────────────────────────
+.bacteria
+.viruses
+.taxondata
+*.fileToTaxIDs
+.settings
+.DBDirectory
+files_excluded.txt
+
+# ── Test data (large downloads) ───────────────────────────────────────────────
+data/test_real/
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+.dockerignore
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
