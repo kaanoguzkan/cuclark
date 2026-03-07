@@ -4,14 +4,15 @@ project(cuCLARK LANGUAGES CXX CUDA)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 14)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-# GPU architectures (sm_70+ required for warp intrinsics):
-#   70=Volta/V100  72=Jetson Xavier  75=Turing/RTX20xx  80=Ampere/A100
-#   86=RTX30xx     87=Jetson Orin    89=Ada/RTX40xx     90=Hopper/H100
+# GPU architectures:
+#   35=Kepler/K20  37=K80  50=Maxwell  52=GTX9xx  60=Pascal/P100
+#   61=GTX10xx     70=Volta/V100  75=Turing/RTX20xx  80=Ampere/A100
+#   86=RTX30xx     89=Ada/RTX40xx     90=Hopper/H100
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES "70;72;75;80;86;87;89;90")
+    set(CMAKE_CUDA_ARCHITECTURES "35;50;52;60;61;70;75;80;86;89;90")
 endif()
 
 # CUDA toolkit (needed to expose cuda_runtime.h to C++ host files)

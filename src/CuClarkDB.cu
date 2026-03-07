@@ -1127,7 +1127,7 @@ __global__ void queryKernel (uint8_t k,
 		{
 			pred = (i < (int)numTargets && targetHits16[i] > 0) ? 1 : 0;
 			t_m = INT_MAX >> warpSize-wlane-1;	// set bits < tid
-			b = __ballot_sync(0xffffffff, pred) & t_m;	// get pred bits < tid
+			b = __ballot(pred) & t_m;	// get pred bits < tid
 			t_u = __popc(b);					// get sum of bits = # pred < tid
 			j = 2*(total+t_u);
 
@@ -1154,7 +1154,7 @@ __global__ void queryKernel (uint8_t k,
 #endif
 				sharedResultRow[0+wid*(pitch/sizeof(RESULTS))] = total;
 			}
-			total = __shfl_sync(0xffffffff, total, warpSize-1);	// get total from last lane
+			total = __shfl(total, warpSize-1);	// get total from last lane
 		}
 		
 
