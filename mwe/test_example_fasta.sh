@@ -18,18 +18,28 @@ set -euo pipefail
 # Default DATA_DIR: /data/test_example
 
 DATA_DIR="${1:-/data/test_example}"
-FASTA="${2:-example.fasta}"
+FASTA="${2:-$DATA_DIR/example.fasta}"
+FASTA_URL="http://donut.cs.bilkent.edu.tr/share/rica_s/rica_s_tl_pbsim3/original_human_pathogen.fasta"
 
-# Resolve FASTA path: check argument, then /data, then script dir
+mkdir -p "$DATA_DIR"
+
+# Download example.fasta if not found locally
 if [ ! -f "$FASTA" ]; then
-	if [ -f "/data/$FASTA" ]; then
-		FASTA="/data/$FASTA"
-	elif [ -f "$(dirname "$0")/../$FASTA" ]; then
-		FASTA="$(dirname "$0")/../$FASTA"
+	echo "Downloading example.fasta..."
+	if command -v wget &>/dev/null; then
+		wget --progress=bar:force "$FASTA_URL" -O "$FASTA" || { echo "ERROR: Download failed"; exit 1; }
+	elif command -v curl &>/dev/null; then
+		curl -sfL "$FASTA_URL" -o "$FASTA" || { echo "ERROR: Download failed"; exit 1; }
 	else
-		echo "ERROR: Cannot find $FASTA"
+		echo "ERROR: neither wget nor curl found"
 		exit 1
 	fi
+	if [ ! -s "$FASTA" ]; then
+		echo "ERROR: Downloaded file is empty"
+		rm -f "$FASTA"
+		exit 1
+	fi
+	echo "  Downloaded to $FASTA"
 fi
 
 echo "============================================================"
