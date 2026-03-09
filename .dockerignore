@@ -6,3 +6,4 @@ data/
 *.fasta
 *.fna
 *.fastq
+test_example/
