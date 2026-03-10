@@ -3,7 +3,7 @@ exe/
 data/
 .git/
 *.o
-*.fasta
-*.fna
-*.fastq
+**/*.fasta
+**/*.fna
+**/*.fastq
 test_example/

@@ -34,7 +34,10 @@ data/viral_mwe/targets.txt
 .DBDirectory
 files_excluded.txt
 
-# ── Test data (large downloads) ───────────────────────────────────────────────
+# ── Large sequence files ──────────────────────────────────────────────────────
+**/*.fasta
+**/*.fna
+**/*.fastq
 data/test_real/
 
 # ── Docker ───────────────────────────────────────────────────────────────────

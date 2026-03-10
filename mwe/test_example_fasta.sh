@@ -2,24 +2,29 @@
 set -euo pipefail
 
 # ── Test script for example.fasta ────────────────────────────────────────
-# Validates example.fasta (human chr1) by:
-#   1. Checking FASTA format integrity
-#   2. Generating simulated reads from it
-#   3. Downloading a few small reference genomes (human + viral)
-#   4. Classifying the reads with cuCLARK
-#   5. Showing a summary of results
+# Tests uniques.fasta by:
+#   1. Generating simulated reads from it
+#   2. Extracting target genomes from the input
+#   3. Classifying the reads with cuCLARK
+#   4. Showing a summary of results
+#
+# Expects uniques.fasta to be provided via $2 or the FASTA env var.
+# The file is NOT baked into the Docker image — mount it at runtime.
 #
 # Usage (inside Docker container):
-#   bash /opt/cuclark/mwe/test_example_fasta.sh [DATA_DIR]
+#   docker run --gpus all \
+#     -v /path/to/uniques.fasta:/data/uniques.fasta \
+#     -v $(pwd):/data cuclark \
+#     bash /opt/cuclark/mwe/test_example_fasta.sh /data/test_example /data/uniques.fasta
 #
 # Or from the repo root:
-#   bash test_example_fasta.sh [DATA_DIR]
+#   bash mwe/test_example_fasta.sh [DATA_DIR] [FASTA_PATH]
 #
 # Default DATA_DIR: /data/test_example
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${1:-/data/test_example}"
-FASTA="${2:-$DATA_DIR/example.fasta}"
-FASTA_URL="http://donut.cs.bilkent.edu.tr/share/rica_s/uniques.fasta"
+FASTA="${2:-${FASTA:-$SCRIPT_DIR/uniques.fasta}}"
 
 # Tunable parameters (override via env vars):
 #   NUM_TARGETS  — how many genomes to extract as classification targets (default: 5)
@@ -30,27 +35,14 @@ NUM_READS="${NUM_READS:-200}"
 
 mkdir -p "$DATA_DIR"
 
-# Download example.fasta if not found locally
 if [ ! -f "$FASTA" ]; then
-	echo "Downloading example.fasta..."
-	if command -v wget &>/dev/null; then
-		wget --progress=bar:force "$FASTA_URL" -O "$FASTA" || { echo "ERROR: Download failed"; exit 1; }
-	elif command -v curl &>/dev/null; then
-		curl -sfL "$FASTA_URL" -o "$FASTA" || { echo "ERROR: Download failed"; exit 1; }
-	else
-		echo "ERROR: neither wget nor curl found"
-		exit 1
-	fi
-	if [ ! -s "$FASTA" ]; then
-		echo "ERROR: Downloaded file is empty"
-		rm -f "$FASTA"
-		exit 1
-	fi
-	echo "  Downloaded to $FASTA"
+	echo "ERROR: FASTA file not found at $FASTA"
+	echo "       Provide the path as the second argument or mount it into the container."
+	exit 1
 fi
 
 echo "============================================================"
-echo "  CuCLARK Test: example.fasta"
+echo "  CuCLARK Test: uniques.fasta"
 echo "  Input:            $FASTA"
 echo "  Output directory: $DATA_DIR"
 echo "============================================================"
@@ -58,77 +50,9 @@ echo ""
 
 mkdir -p "$DATA_DIR/genomes" "$DATA_DIR/db"
 
-# ── Step 1: Validate FASTA format ────────────────────────────────────────
-echo "[1/6] Validating FASTA format..."
-
-ERRORS=0
-
-# Check header line
-HEADER=$(head -1 "$FASTA")
-if [[ ! "$HEADER" =~ ^\> ]]; then
-	echo "  FAIL: First line is not a FASTA header (expected '>')"
-	ERRORS=$((ERRORS + 1))
-else
-	echo "  OK: Header found: $HEADER"
-fi
-
-# Count sequences
-NUM_SEQS=$(grep -c "^>" "$FASTA")
-echo "  Sequences: $NUM_SEQS"
-
-# Check for invalid characters (sample first 10k lines to avoid scanning 3GB file)
-INVALID_LINES=$(head -10001 "$FASTA" | grep -v "^>" | grep -c '[^ACGTNacgtnRYSWKMBDHVryswkmbdhv]' || true)
-if [ "$INVALID_LINES" -gt 0 ]; then
-	echo "  WARN: $INVALID_LINES lines contain non-standard characters (sampled first 10k lines)"
-else
-	echo "  OK: All sequence lines contain valid nucleotide characters (sampled first 10k lines)"
-fi
-
-# File size (use stat to avoid reading the file; fall back to wc)
-FILE_SIZE=$(stat -c%s "$FASTA" 2>/dev/null || wc -c < "$FASTA" | tr -d ' ')
-LINE_COUNT=$(wc -l < "$FASTA" | tr -d ' ')
-echo "  File size:  $FILE_SIZE bytes"
-echo "  Lines:      $LINE_COUNT"
-
-# Check for empty sequences
-EMPTY_SEQS=0
-prev_header=false
-while IFS= read -r line; do
-	if [[ "$line" =~ ^\> ]]; then
-		if $prev_header; then
-			EMPTY_SEQS=$((EMPTY_SEQS + 1))
-		fi
-		prev_header=true
-	else
-		prev_header=false
-	fi
-done < <(head -1000 "$FASTA")  # sample first 1000 lines for speed
-
-if [ "$EMPTY_SEQS" -gt 0 ]; then
-	echo "  WARN: $EMPTY_SEQS empty sequence(s) detected (in first 1000 lines)"
-else
-	echo "  OK: No empty sequences (sampled first 1000 lines)"
-fi
-
-# Count actual bases (non-N, sampled — use head/tail to avoid scanning entire file)
-SAMPLE_BASES=$(head -10001 "$FASTA" | tail -n +2 | tr -d '\n\r ' | wc -c | tr -d ' ')
-SAMPLE_N=$(head -10001 "$FASTA" | tail -n +2 | tr -d '\n\r ' | tr -cd 'Nn' | wc -c | tr -d ' ')
-NON_N=$((SAMPLE_BASES - SAMPLE_N))
-if [ "$SAMPLE_BASES" -gt 0 ]; then
-	N_PCT=$((SAMPLE_N * 100 / SAMPLE_BASES))
-	echo "  Sampled first 10k lines: ${SAMPLE_BASES} bases, ${N_PCT}% N's, ${NON_N} informative bases"
-fi
-
-if [ "$ERRORS" -gt 0 ]; then
-	echo ""
-	echo "  FAIL: $ERRORS format error(s) found. Aborting."
-	exit 1
-fi
-echo "  PASS: FASTA format validation complete."
-
-# ── Step 2: Generate simulated reads ─────────────────────────────────────
+# ── Step 1: Generate simulated reads ─────────────────────────────────────
 echo ""
-echo "[2/6] Generating simulated reads from example.fasta..."
+echo "[1/4] Generating simulated reads from uniques.fasta..."
 
 # Extract a portion of real sequence (skip N-rich beginning) for read generation
 # We sample from lines that have real bases, not just N's
@@ -196,9 +120,9 @@ if [ "$NUM_READS" -eq 0 ]; then
 fi
 echo "  Total reads in $DATA_DIR/reads.fa: $NUM_READS"
 
-# ── Step 3: Extract target genomes from input FASTA ──────────────────────
+# ── Step 2: Extract target genomes from input FASTA ──────────────────────
 echo ""
-echo "[3/6] Extracting target genomes from input FASTA..."
+echo "[2/4] Extracting target genomes from input FASTA..."
 
 # Clean previous genome files to avoid stale targets
 rm -f "$DATA_DIR/genomes/"*.fna
@@ -235,9 +159,9 @@ print(min(count, n))
 
 echo "  Extracted $TARGET_COUNT target sequences from input FASTA"
 
-# ── Step 4: Create targets file ───────────────────────────────────────────
+# ── Step 3: Create targets file and run classification ────────────────────
 echo ""
-echo "[4/6] Creating targets file..."
+echo "[3/4] Creating targets file..."
 
 # Clean stale DB so it rebuilds from current targets
 rm -rf "$DATA_DIR/db/"*
@@ -251,9 +175,9 @@ done
 NUM_TGT=$(wc -l < "$DATA_DIR/targets.txt" | tr -d ' ')
 echo "  Created targets.txt with $NUM_TGT targets"
 
-# ── Step 5: Run classification ────────────────────────────────────────────
+# ── Step 3b: Run classification ───────────────────────────────────────────
 echo ""
-echo "[5/6] Running cuCLARK classification..."
+echo "[3/4] Running cuCLARK classification..."
 
 # ── Auto-detect system resources and select best variant ──
 #
@@ -334,13 +258,13 @@ else
 	echo "    docker build -t cuclark ."
 	echo "    docker run --gpus all -v \$(pwd):/data cuclark bash /data/test_example_fasta.sh"
 	echo ""
-	echo "  Validation steps 1-4 passed. Classification skipped."
+	echo "  Steps 1-3 passed. Classification skipped."
 	exit 0
 fi
 
-# ── Step 6: Show results ─────────────────────────────────────────────────
+# ── Step 4: Show results ─────────────────────────────────────────────────
 echo ""
-echo "[6/6] Results summary:"
+echo "[4/4] Results summary:"
 echo ""
 
 RESULTS_CSV="$DATA_DIR/results.csv"
