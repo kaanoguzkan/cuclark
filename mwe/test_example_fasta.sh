@@ -54,64 +54,36 @@ mkdir -p "$DATA_DIR/genomes" "$DATA_DIR/db"
 echo ""
 echo "[1/4] Generating simulated reads from uniques.fasta..."
 
-# Extract a portion of real sequence (skip N-rich beginning) for read generation
-# We sample from lines that have real bases, not just N's
-python3 -c "
-import random
-import sys
-
-fasta_path = '$FASTA'
-read_len = 150
-num_reads = $NUM_READS
-
-# Read all sequence data
-seq_parts = []
-with open(fasta_path) as f:
-    for line in f:
-        if line.startswith('>'):
-            continue
-        seq_parts.append(line.strip())
-        # Only need enough for read generation (scale with num_reads)
-        if len(seq_parts) * 60 > max(1_000_000, num_reads * 1000):
-            break
-
-seq = ''.join(seq_parts)
-
-# Find regions with real bases (not all N's)
-reads_written = 0
-random.seed(42)
-attempts = 0
-max_attempts = num_reads * 20
-
-with open('$DATA_DIR/reads.fa', 'w') as out:
-    while reads_written < num_reads and attempts < max_attempts:
-        attempts += 1
-        start = random.randint(0, len(seq) - read_len)
-        read_seq = seq[start:start + read_len]
-        # Skip reads that are mostly N's
-        n_count = read_seq.upper().count('N')
-        if n_count > read_len * 0.1:
-            continue
-        out.write(f'>example_read_{reads_written} pos={start}\n')
-        out.write(f'{read_seq}\n')
-        reads_written += 1
-
-print(f'  Generated {reads_written} reads ({read_len} bp each) from informative regions')
-if reads_written < num_reads:
-    print(f'  WARN: Only found {reads_written}/{num_reads} reads with <10% N content')
-" || {
-	echo "  ERROR: Python3 not available for read generation. Falling back to shell method."
-
-	# Shell fallback: extract reads from non-N regions
-	grep -v "^>" "$FASTA" | grep -v "^NNNN" | head -200 | awk -v rl=150 '
-	{
-		seq = $0
-		if (length(seq) >= rl) {
-			printf ">example_read_%d\n%s\n", NR, substr(seq, 1, rl)
-		}
-	}' > "$DATA_DIR/reads.fa"
-	echo "  Generated $(grep -c '^>' "$DATA_DIR/reads.fa") reads (shell fallback)"
+# Extract reads from non-N-rich regions of the FASTA using awk
+# Concatenates sequence lines (skipping headers), then extracts
+# non-overlapping 150bp windows that have <10% N content.
+awk -v rl=150 -v num_reads="$NUM_READS" -v outfile="$DATA_DIR/reads.fa" '
+BEGIN { seq = ""; limit = 1000000 }
+!/^>/ {
+    seq = seq $0
+    if (length(seq) > limit && limit < num_reads * 1000)
+        limit = num_reads * 1000
+    if (length(seq) > limit) exit
 }
+END {
+    srand(42)
+    written = 0; attempts = 0; max_att = num_reads * 20
+    seqlen = length(seq)
+    while (written < num_reads && attempts < max_att) {
+        attempts++
+        start = int(rand() * (seqlen - rl)) + 1
+        rd = substr(seq, start, rl)
+        if (length(rd) < rl) continue
+        # Count Ns
+        n = gsub(/[Nn]/, "&", rd)
+        if (n > rl * 0.1) continue
+        printf ">example_read_%d pos=%d\n%s\n", written, start-1, rd > outfile
+        written++
+    }
+    printf "  Generated %d reads (%d bp each) from informative regions\n", written, rl
+    if (written < num_reads)
+        printf "  WARN: Only found %d/%d reads with <10%% N content\n", written, num_reads
+}' "$FASTA"
 
 NUM_READS=$(grep -c "^>" "$DATA_DIR/reads.fa")
 if [ "$NUM_READS" -eq 0 ]; then
@@ -127,35 +99,18 @@ echo "[2/4] Extracting target genomes from input FASTA..."
 # Clean previous genome files to avoid stale targets
 rm -f "$DATA_DIR/genomes/"*.fna
 
-# Use Python3 for fast extraction (bash while-read is too slow on multi-GB files)
-TARGET_COUNT=$(python3 -c "
-import sys, os
-
-fasta = '$FASTA'
-out_dir = '$DATA_DIR/genomes'
-n = $NUM_TARGETS
-count = 0
-current = None
-
-with open(fasta) as f:
-    for line in f:
-        if line.startswith('>'):
-            if current:
-                current.close()
-            count += 1
-            if count > n:
-                break
-            acc = line[1:].split()[0]
-            current = open(os.path.join(out_dir, acc + '.fna'), 'w')
-            current.write(line)
-        elif current:
-            current.write(line)
-
-if current:
-    current.close()
-
-print(min(count, n))
-")
+# Extract first N target genomes using awk (fast, no Python needed)
+TARGET_COUNT=$(awk -v n="$NUM_TARGETS" -v out_dir="$DATA_DIR/genomes" '
+/^>/ {
+    if (outfile) close(outfile)
+    count++
+    if (count > n) exit
+    acc = substr($1, 2)
+    outfile = out_dir "/" acc ".fna"
+}
+outfile { print > outfile }
+END { print (count < n ? count : n) }
+' "$FASTA")
 
 echo "  Extracted $TARGET_COUNT target sequences from input FASTA"
 

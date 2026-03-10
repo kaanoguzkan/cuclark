@@ -32,7 +32,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         coreutils \
         ca-certificates \
         libgomp1 \
-        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install NCBI Datasets CLI
@@ -47,6 +46,7 @@ COPY --from=builder /usr/local/exe/cuCLARK-l      /usr/local/bin/cuCLARK-l
 COPY --from=builder /usr/local/exe/getTargetsDef  /usr/local/bin/getTargetsDef
 COPY --from=builder /usr/local/exe/getAccssnTaxID /usr/local/bin/getAccssnTaxID
 COPY --from=builder /usr/local/exe/getfilesToTaxNodes /usr/local/bin/getfilesToTaxNodes
+COPY --from=builder /usr/local/bin/cuclark        /usr/local/bin/cuclark
 
 COPY scripts/ /opt/cuclark/scripts/
 COPY mwe/ /opt/cuclark/mwe/
