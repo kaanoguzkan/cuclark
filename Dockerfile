@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------
-# Stage 1: Build
+# Stage 1: Build (CUDA 11.8 — supports Kepler sm_35 through Hopper sm_90)
 # ---------------------------------------------------------------
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS builder
+FROM nvidia/cuda:11.8.0-devel-ubuntu22.04 AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         cmake \
@@ -14,14 +14,14 @@ WORKDIR /cuclark
 COPY . .
 
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CUDA_ARCHITECTURES="70;72;75;80;86;87;89;90" \
+        -DCMAKE_CUDA_ARCHITECTURES="35;37;50;52;60;61;70;72;75;80;86;87;89;90" \
     && cmake --build build -j$(nproc) \
     && cmake --install build --prefix /usr/local
 
 # ---------------------------------------------------------------
 # Stage 2: Runtime (smaller image, no compiler)
 # ---------------------------------------------------------------
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \

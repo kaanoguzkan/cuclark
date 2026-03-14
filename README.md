@@ -9,7 +9,7 @@ Comes in two variants:
 ## Quick start (Docker)
 
 ```bash
-# Build
+# Build (supports all GPUs from Kepler K20 to Hopper H100)
 docker build -t cuclark .
 
 # Run the MWE test (needs --entrypoint since image entrypoint is cuclark)
@@ -42,13 +42,14 @@ docker run --gpus all -v ${PWD}:/data cuclark \
 
 ### GPU compatibility
 
-Requires NVIDIA GPU with compute capability 7.0+ (Volta and newer). Tested architectures: sm_70 through sm_90.
+Requires NVIDIA GPU with compute capability 3.5+ (Kepler and newer). Tested architectures: sm_35 through sm_90.
+
+Built with CUDA 11.8 to support all GPUs from Kepler (K20, K40, K80) to Hopper (H100).
 
 ### Building from source
 
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CUDA_ARCHITECTURES="70;75;80;86;89;90"
+cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 ```
 

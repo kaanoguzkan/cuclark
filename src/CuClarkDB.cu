@@ -123,8 +123,8 @@ CuClarkDB<HKMERr>::CuClarkDB(const size_t _numDevices, const uint8_t _k, const s
 
 	for(int i=0; i<m_numDevices; i++)
 	{
-		// locate devices capable of Peer-to-Peer (requires compute capability >= 7.0 / Volta)
-		if(prop[i].major >= 7)
+		// locate devices capable of Peer-to-Peer (Kepler+; actual support checked by cudaDeviceCanAccessPeer)
+		if(prop[i].major >= 3)
 		{
 			gpuid[gpu_count++] = i;
 			//~ std::cerr << "Device " << i << " = " << prop[i].name << " is capable of P2P.\n";

@@ -4,7 +4,7 @@ services:
     entrypoint:
       - /bin/bash
     hostname: rica_s_id_cuclark
-    image: cuclark
+    image: alkanlab/cuclark:latest
     ipc: private
     logging:
       driver: json-file
