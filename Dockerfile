@@ -1,27 +1,33 @@
 # ---------------------------------------------------------------
-# Stage 1: Build (CUDA 11.8 — supports Kepler sm_35 through Hopper sm_90)
+# Stage 1: Build (CUDA 11.4 — supports K20Xm sm_35 and RTX 3070 sm_86)
 # ---------------------------------------------------------------
-FROM nvidia/cuda:11.8.0-devel-ubuntu22.04 AS builder
+FROM nvidia/cuda:11.4.3-devel-ubuntu20.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        cmake \
         g++ \
         wget \
         ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && wget -qO- https://github.com/Kitware/CMake/releases/download/v3.27.9/cmake-3.27.9-linux-x86_64.tar.gz \
+       | tar xz -C /usr/local --strip-components=1
 
 WORKDIR /cuclark
-COPY . .
+COPY CMakeLists.txt ./
+COPY src/ src/
 
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CUDA_ARCHITECTURES="35;37;50;52;60;61;70;72;75;80;86;87;89;90" \
+        -DCMAKE_CUDA_ARCHITECTURES="35;86" \
     && cmake --build build -j$(nproc) \
     && cmake --install build --prefix /usr/local
 
 # ---------------------------------------------------------------
 # Stage 2: Runtime (smaller image, no compiler)
 # ---------------------------------------------------------------
-FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
+FROM nvidia/cuda:11.4.3-runtime-ubuntu20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
